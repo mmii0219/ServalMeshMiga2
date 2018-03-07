@@ -53,8 +53,11 @@ import java.lang.reflect.InvocationTargetException;
 import java.math.BigInteger;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
+import java.net.Inet4Address;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.net.MulticastSocket;
+import java.net.NetworkInterface;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketException;
@@ -65,6 +68,7 @@ import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -186,6 +190,9 @@ public class Control extends Service {
     private int TryNum = 15;
     private boolean wifiScanCheck = false;
     private boolean isWifiConnect = false;//學長的temp
+    //for multicast socket add by Miga 20180129
+    private  Enumeration<NetworkInterface> enumeration ;
+    private  NetworkInterface p2p0 = null;
 
     public enum RoleFlag {
         NONE(0), GO(1), CLIENT(2), BRIDGE(3), WIFI_CLIENT(4);//BRIDGE就是之前的RELAY
@@ -275,11 +282,11 @@ public class Control extends Service {
                 return -1;
             }
 
-            if (this.POWER.equals("100")) {
+            /*if (this.POWER.equals("100")) {
                 return -1;
             } else if(POWER.equals("100")) {
                 return 1;
-            }else if (this.POWER.compareTo(POWER) < 0) {
+            }else */if (this.POWER.compareTo(POWER) < 0) {
                 return 1;
             } else if (this.POWER.compareTo(POWER) > 0) {
                 return -1;
@@ -654,7 +661,7 @@ public class Control extends Service {
                 //String thisTimeMAC = record.get("MAC").toString();//record是對方的服務內容（在discovery Service時指定了record=re_record）
                 while (collect_num > 0) {
                     record_set.put(record.get("SSID").toString(), record);//將蒐集到的其他裝置的服務根據SSID存放個別的服務
-                    Log.d("Miga","WiFi_Connect/Receive record size:"+record_set.size());
+                    //Log.d("Miga","WiFi_Connect/Receive record size:"+record_set.size());
                     //寫log, 只適用於android 5.0. 因為目前是以6.0來測試,因此先註解
                     /*if(CanWriteLogFiles()&&(!writeLog)&&record_set.size()==(ExpDeviceNum-1)) {//ExpDeviceNum為目前參與實驗的裝置數量, writelog為false表示還沒寫過log file
                         WriteLog.appendLog("WiFi_Connect/參與實驗裝置數:"+ExpDeviceNum+"更新服務次數:"+InfoChangeTime+"sleep time:"+sleep_time+"\r\n",WiFiApName);
@@ -665,7 +672,7 @@ public class Control extends Service {
                     collect_num--;
                 }
                 Log.d("Miga", "WiFi_Connect/Collect data and record size : " + record_set+record_set.size());
-                s_status="WiFi_Connect/Receive record size:"+record_set.size();
+                s_status="state: WiFi_Connect/Receive record size:"+record_set.size();
 
                 if(InfoChangeTime < 5) {//交換次數少於5次
                     STATE = StateFlag.ADD_SERVICE.getIndex();//再去重新加入資料並交換
@@ -679,7 +686,7 @@ public class Control extends Service {
                     InfoChangeTime=0;//InfoChangeTime交換次數歸零
                     return;
                 }
-                Log.d("Miga", "WiFi_Connect/ROLE:"+ROLE);
+                //Log.d("Miga", "WiFi_Connect/ROLE:"+ROLE);
                 if(ROLE == RoleFlag.NONE.getIndex()) {//還沒檢查並連線過,則進行判斷
                     String SSID = null;
                     String key = null;
@@ -698,7 +705,7 @@ public class Control extends Service {
                         MAC = record.get("MAC").toString();
                         POWER = record.get("POWER").toString();
                         //GO = record.get("GO").toString();
-                        Log.d("Miga", "WiFi_Connect/Insert data");
+                        //Log.d("Miga", "WiFi_Connect/Insert data");
 
                         if (!Name.equals(Cluster_Name)) {//只儲存不同Cluster的device資料
                             Step1Data_set data = new Step1Data_set(SSID, key, Name, PEER, MAC, POWER);
@@ -745,6 +752,7 @@ public class Control extends Service {
                                 ROLE = RoleFlag.GO.getIndex();//變為GO
                                 Log.d("Miga", "WiFi_Connect/ROLE: " + ROLE);
                                 STATE = StateFlag.ADD_SERVICE.getIndex();
+                                Isconnect=true;//p2p已有人連上/被連上,目前主要是用來判斷是否可以開始進行Group內peer的計算
                                 return;
                             } else {//連上別人
                                 // Try to connect Ap(連上排序第一個or第二個的裝置)
@@ -780,8 +788,8 @@ public class Control extends Service {
                                         break;
                                     }
                                 }
-                                Log.d("Miga", "WiFi_Connect/findIsGoExist : " + findIsGoExist);
-                                if (findIsGoExist == false) {//若我們要連的GO不見的話,則回到ADD_SERVICE,重新再收集資料一次
+                                //Log.d("Miga", "WiFi_Connect/findIsGoExist : " + findIsGoExist);
+                                if (findIsGoExist == false) {//若我們要連的GO不見的話,則回到ADD_SERVICE,重新再收集資料一次.20180307Miga 這裡可能要再想一下後面的流程
                                     STATE = StateFlag.ADD_SERVICE.getIndex();
                                     return;
                                 }
@@ -807,8 +815,12 @@ public class Control extends Service {
                                     // renew service record information
                                     Cluster_Name = Name;//將自己的Cluster_Name更新為新的GO的Cluster_Name //Miga 20180118 將自己的clusterName更新了
                                     ROLE = RoleFlag.CLIENT.getIndex();//變為CLIENT
-                                    Log.d("Miga", "WiFi_Connect/ROLE:" + ROLE + "Cluster_Name:" + Cluster_Name);
+                                    String WiFiIpAddr = wifiIpAddress();//取得wifi IP address
+                                    Log.d("Miga", "WiFi_Connect/ROLE:" + ROLE + "Cluster_Name:" + Cluster_Name+" wifiIpAddress:"+WiFiIpAddr);
+                                    s_status="state: WiFiIpAddress="+WiFiIpAddr;
+                                    CheckChangeIP(WiFiIpAddr);// Miga Add 20180307. 讓client丟自己的wifi ip addr.給GO檢查,並讓GO的IPTable內有這組ip(為了讓GO進行unicast傳送訊息用)
                                     STATE = StateFlag.ADD_SERVICE.getIndex();
+                                    Isconnect=true;//p2p已有人連上/被連上,目前主要是用來判斷是否可以開始進行Group內peer的計算
                                     //isCheck = true;//檢查完畢
                                 }
                             }
@@ -991,17 +1003,17 @@ public class Control extends Service {
                         record = re_record;
                         if (t_wifi_connect != null) {
                             if (t_wifi_connect.isAlive()) {
-                                Log.d("Miga", " WiFi_Connect isAlive  ");
+                                //Log.d("Miga", " WiFi_Connect isAlive  ");
                                 return;
                             }
                         }
                         if (t_wifi_connect == null) {
-                            Log.d("Miga", " WiFi_Connect start  ");
+                            //Log.d("Miga", " WiFi_Connect start  ");
                             t_wifi_connect = new WiFi_Connect();
                             t_wifi_connect.start();
                         } else {
                             if (!t_wifi_connect.isAlive()) {
-                                Log.d("Miga", " WiFi_Connect start  ");
+                                //Log.d("Miga", " WiFi_Connect start  ");
                                 t_wifi_connect = new WiFi_Connect();
                                 t_wifi_connect.start();
                             }
@@ -1015,12 +1027,12 @@ public class Control extends Service {
     private void startRegistration() {
 
         InfoChangeTime+=1;//加入新的資訊並交換過得次數
-        Log.d("Miga", "startRegistration/InfoChangeTime"+InfoChangeTime);
+        //Log.d("Miga", "startRegistration/InfoChangeTime"+InfoChangeTime);
         record_re = new HashMap();
         //int peercount = count_peer();
         //peercount=record_set.size();//蒐集到周遭的info,初始值為0
         peercount = discoverpeernum;//於listener接收到時會做更新
-        Log.d("Miga", "startRegistration/discoverpeernum"+discoverpeernum);
+        //Log.d("Miga", "startRegistration/discoverpeernum"+discoverpeernum);
         /*try {
             peerCount = ServalDCommand.peerCount();
         } catch (ServalDFailureException e) {
@@ -1049,7 +1061,7 @@ public class Control extends Service {
                             @Override
                             public void onSuccess() {
                                 // service broadcasting started
-                                Log.d("Miga", "State: advertising service, addLocalService onSuccess");
+                                //Log.d("Miga", "State: advertising service, addLocalService onSuccess");
                                 STATE = StateFlag.DISCOVERY_SERVICE.getIndex();
                             }
 
@@ -1107,7 +1119,7 @@ public class Control extends Service {
                             manager.stopPeerDiscovery(channel, new WifiP2pManager.ActionListener() {
                                 @Override
                                 public void onSuccess() {
-                                    Log.d("Miga", "State: discovering service, stopPeerDiscovery onSuccess");
+                                    //Log.d("Miga", "State: discovering service, stopPeerDiscovery onSuccess");
                                     manager.removeServiceRequest(channel, serviceRequest,
                                             new WifiP2pManager.ActionListener() {
                                                 @Override
@@ -1120,12 +1132,12 @@ public class Control extends Service {
                                                                             new WifiP2pManager.ActionListener() {
                                                                                 @Override
                                                                                 public void onSuccess() {
-                                                                                    Log.d("Miga", "State: discovering service, discoverServices onSuccess");
+                                                                                    //Log.d("Miga", "State: discovering service, discoverServices onSuccess");
                                                                                 }
 
                                                                                 @Override
                                                                                 public void onFailure(int error) {
-                                                                                    Log.d("Miga", "State: discovering service, discoverServices onFailure " + error);
+                                                                                    //Log.d("Miga", "State: discovering service, discoverServices onFailure " + error);
                                                                                     manager.discoverPeers(channel, null);
                                                                                     STATE = StateFlag.ADD_SERVICE.getIndex();
                                                                                 }
@@ -1155,8 +1167,14 @@ public class Control extends Service {
                                 }
                             });
                             NumRound++;
-                            Thread.sleep(8000);
-                            sleep_time = sleep_time + 8;
+                            if(InfoChangeTime < 5) {
+                                Thread.sleep(8000);
+                                sleep_time = sleep_time + 8;
+                            }else{
+                                Thread.sleep(10000);
+                                sleep_time = sleep_time + 10;
+                            }
+
                             STATE = StateFlag.ADD_SERVICE.getIndex();
                         }//End DISCOVERY_SERVICE
                        /* Log.d("Leaf0419", "STATE: " + STATE);
@@ -1351,43 +1369,93 @@ public class Control extends Service {
         return ipAddressString;
     }
 
-    // EditLeaf 0727
+    // Miga edit 20180307. 主要是給GO來進行client的wifi ip addr.的判斷
+    // 若IPTable內沒有重複的ip的話,則直接加入
+    // 若IPTable內有重複的ip, 則產生一組新的ip給client之後再加入到IPTable
     public class CollectIP_server extends Thread {
         private BufferedReader in;
         private PrintWriter out;
-        private String message, temp;
+        private String recMessagetemp,WiFiIpAddr, temp, message;
+        private String[] recMessage;
         private int i;
+        private MulticastSocket recvSocket;//Miga
+        private DatagramPacket msgPkt;//Miga
+        private boolean isJoin=false;
 
         public void run() {
             try {
-                ss = new ServerSocket(IP_port_for_IPModify);
-                while (true) {
+
+
+                //Miga add multicast 20180129
+                getP2P0();
+                byte[] buf=new byte[256];
+                /*if(IsGO()){
+                    recvSocket=new MulticastSocket(6789);
+                    InetAddress multicgroup = InetAddress.getByName("224.0.0.3"); //客戶客戶端將自己加入到指定的multicast group中,這樣就能夠收到來自該組的消息
+                    //clientSocket.joinGroup(multicgroup);
+                    recvSocket.joinGroup(new InetSocketAddress(multicgroup,6789), p2p0);//用p2p0 interface來接收muticast pkt
+                    Log.d("Miga", "I'm GO! I join multicast group success" +multicgroup);
+                }*/
+                while(true){
+
+                    if(IsGO()){
+                        if(!isJoin){
+                            recvSocket=new MulticastSocket(6789);
+                            InetAddress multicgroup = InetAddress.getByName("224.0.0.3"); //客戶客戶端將自己加入到指定的multicast group中,這樣就能夠收到來自該組的消息
+                            //clientSocket.joinGroup(multicgroup);
+                            recvSocket.joinGroup(new InetSocketAddress(multicgroup,6789), p2p0);//用p2p0 interface來接收muticast pkt
+                            Log.d("Miga", "I'm GO! I join multicast group success" +multicgroup);
+                            isJoin=true;//已加入multicast group
+                        }
+                        //讀取數據
+                        //msgPkt=new DatagramPacket(buf, buf.length);
+                        if(msgPkt!=null){
+                            recvSocket.receive(msgPkt);
+                            message=new String(msgPkt.getData());
+                            Log.d("Miga", "I got message" +message);
+                            s_status="I got message"+message;
+                        }
+                    }
+                }
+                //ss = new ServerSocket(IP_port_for_IPModify);
+                /*while (true) {
+
                     sc = ss.accept();
                     in = new BufferedReader(new InputStreamReader(sc.getInputStream()));
-                    message = in.readLine();
-                    Log.d("Leaf0419", "Receive IP: " + message);
-                    if (IPTable.containsKey(message)) {
-                        temp = message;
-                        for (i = 2; i < 254; i++) {
-                            temp = "192.168.49." + String.valueOf(i);
-                            if (IPTable.containsKey(temp) == false) break;
+                    recMessagetemp = in.readLine();
+                    recMessage = recMessagetemp.split("#");//[0]: WifiIP , [1]:WiFiApName(SSID)
+                    WiFiIpAddr=recMessage[0];
+                    if(!(recMessage[1].equals(WiFiApName))) {//接收到的不是自己,則可以進行IP判斷
+                        Log.d("Miga", "Receive IP: " + WiFiIpAddr);
+                        if (IPTable.containsKey(WiFiIpAddr)) {
+                            //temp = WiFiIpAddr;
+                            for (i = 2; i < 254; i++) {
+                                temp = "192.168.49." + String.valueOf(i);
+                                if (IPTable.containsKey(temp) == false) break;
+                            }
+                            IPTable.put(temp, 0);
+                            //for test
+                            s_status=" IPTABLE " + IPTable;
+                            Log.d("Miga", "IPTABLE: " + IPTable);
+                            // test end
+                            message = "YES:" + temp;
+                        } else {
+                            IPTable.put(WiFiIpAddr, 0);
+                            //for test
+                            s_status=" IPTABLE " + IPTable;
+                            Log.d("Miga", "IPTable: " + IPTable);
+                            // test end
+                            message = "NO:X";
                         }
-                        IPTable.put(temp, 0);
-                        message = "YES:" + temp;
-                    } else {
-                        IPTable.put(message, 0);
-                        message = "NO:X";
+                        out = new PrintWriter(sc.getOutputStream());
+                        out.println(message);
+                        Log.d("Miga", "Send the message: " + message);
+                        out.flush();
+                        out.close();
+                        in.close();
+                        sc.close();
                     }
-                    out = new PrintWriter(sc.getOutputStream());
-                    out.println(message);
-                    Log.d("Leaf0419", "Send the message: " + message);
-                    out.flush();
-
-                    out.close();
-                    in.close();
-                    sc.close();
-                }
-
+                }*/
             } catch (IOException e) {
                 Log.e(getClass().getName(), e.getMessage());
             } finally {
@@ -1410,6 +1478,105 @@ public class Control extends Service {
             }
         }
     }
+
+    // Miga Add 20180307. 讓client丟自己的wifi ip addr.給GO檢查,並讓GO的IPTable內有這組ip(為了讓GO進行unicast傳送訊息用)
+    public  void CheckChangeIP(String WiFiIpAddr){
+        MulticastSocket clientSocket;//Miga
+        MulticastSocket multicsk;//Miga20180129
+        DatagramPacket msgPkt;//Miga
+        DatagramSocket sendds;
+        String message;
+
+
+        for(int i=0;i<5;i++){
+            try {
+                //sendds = null;
+                //sendds = new DatagramSocket();
+                InetAddress multicgroup= InetAddress.getByName("224.0.0.3");//指定multicast要發送的group
+                multicsk=new MulticastSocket(6789);
+
+                message =WiFiIpAddr+"#"+WiFiApName;
+                msgPkt= new DatagramPacket(message.getBytes(), message.length(), multicgroup, 6789);
+                multicsk.send(msgPkt);
+                Log.v("Miga", "(Proactive)multicsk send message:" + message);
+                s_status="(Proactive)multicsk send message"+message;
+                //i=5;
+
+
+                //Socket Client_socket = new Socket("192.168.49.1", IP_port_for_IPModify);
+                //PrintWriter out = new PrintWriter(Client_socket.getOutputStream());
+                //Log.d("Miga", "Send message: " + WiFiIpAddr);//傳送device的ip address給GO
+                //out.println(WiFiIpAddr+"#"+WiFiApName);//加上WiFiApName主要是用來判斷說這個傳送過來的是不是自己
+                //out.flush();
+                /*BufferedReader in = new BufferedReader(new InputStreamReader(Client_socket.getInputStream()));
+                message = in.readLine();
+                Log.d("Miga", "Receive message: " + message);//從GO那裡接收到的結果
+                String[] s = message.split(":");
+                Log.d("Miga", "Split result: " + s[0] + " " + s[1]);
+                if (Newcompare(s[0], "YES") == 0) {//ip address重複了,因此需要設定新的ip address
+                    boolean result = setIpWithTfiStaticIp(s[1]);
+                    Log.d("Miga", "Modify the static IP address: " + result);
+                }
+                i = 5;
+                in.close();
+                out.close();
+                Client_socket.close();*/
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+
+    }
+
+    // Miga, For multicast ------------Start-------------
+    public void allowMulticast(){
+        // WifiManager wifi = (WifiManager) getSystemService(Context.WIFI_SERVICE);
+        if(wifi!=null){
+            WifiManager.MulticastLock lock=wifi.createMulticastLock("Miga");
+            lock.acquire();
+            Log.d("Miga", "multicast lock open!");
+        }
+    }
+    //For multicast socket
+    public void getP2P0() throws SocketException{
+        //receive時要取得p2p0,用p2p0去加入multicast group.否則會跳Exception
+        enumeration = NetworkInterface.getNetworkInterfaces();
+        Log.d("Miga", "Enter getP2P0()" );
+        while (enumeration.hasMoreElements()) {
+            p2p0 = enumeration.nextElement();
+            if (p2p0.getName().equals("p2p0")) {
+                //there is probably a better way to find ethernet interface
+                Log.d("Miga", "getP2P():FindP2P0" );
+                break;
+            }
+        }
+    }
+    //用來判斷wifi 是否以連線,若是的話則開啟multicast socket
+    public class DetectWifiConnected extends Thread{
+        public void run(){
+            try{
+
+            }
+            finally{
+
+            }
+        }
+    }
+    //判斷是否為GO
+    public boolean IsGO(){
+        /*String p2p_Ip = "";
+        p2p_Ip = getP2PIpAddress();
+        //Log.v("Miga", "IsGO() p2p_Ip:" + p2p_Ip);
+        if (p2p_Ip.equals("192.168.49.1") == true) {
+            Isconnect=true;
+            Log.v("Miga", "Isconnect:" + Isconnect);
+            return true;
+        }*/
+        if(ROLE == RoleFlag.GO.getIndex())
+            return true;
+        return false;
+    }
+    // Miga, For multicast ------------End-------------
 
     // EditLeaf 0812
     public class Receive_peer_count extends Thread {
@@ -1516,7 +1683,7 @@ public class Control extends Service {
                 while (true) {
                     try {
                         if (Isconnect) {
-                            message = WiFiApName + "#" + Cluster_Name + "#" + "5";
+                            message = WiFiApName + "#" + Cluster_Name + "#" + "5";// 0: source SSID 1: cluster name 2: TTL
                             // broadcast
                             dp = new DatagramPacket(message.getBytes(), message.length(), InetAddress.getByName("192.168.49.255"), IP_port_for_peer_counting);
                             sendds.send(dp);
@@ -1586,7 +1753,7 @@ public class Control extends Service {
                 wifi_scan_results = wifi.getScanResults();
                 result_size = wifi_scan_results.size();
                 wifiScanCheck = true;
-                Log.d("Miga", "State: detecting gateway, get the scan result" + wifi_scan_results.toString());
+                //Log.d("Miga", "State: detecting gateway, get the scan result" + wifi_scan_results.toString());
             }
         }, new IntentFilter(WifiManager.SCAN_RESULTS_AVAILABLE_ACTION));
 
@@ -1618,7 +1785,7 @@ public class Control extends Service {
                     manager.requestPeers(channel, new WifiP2pManager.PeerListListener() {
                         @Override
                         public void onPeersAvailable(WifiP2pDeviceList peers) {
-                            Log.d("Miga",String.format("PeerListListener: %d peers available, updating device list", peers.getDeviceList().size()));
+                            //Log.d("Miga",String.format("PeerListListener: %d peers available, updating device list", peers.getDeviceList().size()));
                             discoverpeernum = peers.getDeviceList().size();//取得發現附近裝置的數量
                             // DO WHATEVER YOU WANT HERE
                             // YOU CAN GET ACCESS TO ALL THE DEVICES YOU FOUND FROM peers OBJECT
@@ -1631,7 +1798,9 @@ public class Control extends Service {
 
         Collect_record = new ArrayList<Step1Data_set>();// Wang
         //getBatteryCapacity();
-        //Log.d("Miga", "record_set:"+record_set.size());
+
+        //Miga multicast
+        allowMulticast();
 
     }
     //Miga for power
@@ -1828,10 +1997,10 @@ public class Control extends Service {
             t_reconnection_wifiAp = new Reconnection_wifiAp();
             t_reconnection_wifiAp.start();
         }
-       /* if (t_collectIP == null) {
+        if (t_collectIP == null) {
             t_collectIP = new CollectIP_server();
             t_collectIP.start();
-        }*/
+        }
         // Following two threads is for counting peers by our module,
         // since Serval Mesh has already supported a similar function,
         // you can decide whether utilized following code
@@ -1937,4 +2106,41 @@ public class Control extends Service {
         Field f = obj.getClass().getField(name);
         f.set(obj, Enum.valueOf((Class<Enum>) f.getType(), value));
     }
+
+
+    //Miga for 取得連上裝置的IPAddress
+    private byte[] getLocalIPAddress() {
+        try {
+            for (Enumeration<NetworkInterface> en = NetworkInterface.getNetworkInterfaces(); en.hasMoreElements();) {
+                NetworkInterface intf = en.nextElement();
+                for (Enumeration<InetAddress> enumIpAddr = intf.getInetAddresses(); enumIpAddr.hasMoreElements();) {
+                    InetAddress inetAddress = enumIpAddr.nextElement();
+                    if (!inetAddress.isLoopbackAddress()) {
+                        if (inetAddress instanceof Inet4Address) { // fix for Galaxy Nexus. IPv4 is easy to use :-)
+                            return inetAddress.getAddress();
+                        }
+                        //return inetAddress.getHostAddress().toString(); // Galaxy Nexus returns IPv6
+                    }
+                }
+            }
+        } catch (SocketException ex) {
+            //Log.e("AndroidNetworkAddressFactory", "getLocalIPAddress()", ex);
+        } catch (NullPointerException ex) {
+            //Log.e("AndroidNetworkAddressFactory", "getLocalIPAddress()", ex);
+        }
+        return null;
+    }
+
+    private String getDottedDecimalIP(byte[] ipAddr) {
+        //convert to dotted decimal notation:
+        String ipAddrStr = "";
+        for (int i=0; i<ipAddr.length; i++) {
+            if (i > 0) {
+                ipAddrStr += ".";
+            }
+            ipAddrStr += ipAddr[i]&0xFF;
+        }
+        return ipAddrStr;
+    }
+
 }

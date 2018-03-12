@@ -1429,6 +1429,7 @@ public class Control extends Service {
                 //Miga add multicast 20180309 (接收使用multicast)
                 byte[] buf=new byte[256];
                 //回傳使用 unicast
+                // 20180312 目前回傳還沒寫
                 //ss = new ServerSocket(IP_port_for_IPModify);
                 while(true){
                     //sc = ss.accept();//unicast
@@ -1438,7 +1439,7 @@ public class Control extends Service {
 
                     if(msgPkt!=null){
                         recvSocket.receive(msgPkt);
-                        recMessagetemp=new String(msgPkt.getData());
+                        recMessagetemp=new String(buf, 0, msgPkt.getLength());
                         recMessage = recMessagetemp.split("#");//[0]:WiFiApName(SSID),[1]: WifiIP
                         recWiFiIpAddr=recMessage[1];
                         if(recWiFiIpAddr!="fromself") {
@@ -1456,14 +1457,14 @@ public class Control extends Service {
                                     s_status=" IPTABLE " + IPTable;
                                     Log.d("Miga", "IPTABLE: " + IPTable);
                                     // test end
-                                    sendbackmessage = "YES:" + temp;
+                                    //sendbackmessage = "YES:" + temp;
                                 } else {
                                     IPTable.put(recWiFiIpAddr, 0);
                                     //for test
                                     s_status=" IPTABLE " + IPTable;
                                     Log.d("Miga", "IPTable: " + IPTable);
                                     // test end
-                                    sendbackmessage = "NO:X";
+                                    //sendbackmessage = "NO:X";
                                 }
                                 //回傳訊息給client(使用unicast)
                                 /*out = new PrintWriter(sc.getOutputStream());
@@ -1709,9 +1710,27 @@ public class Control extends Service {
         private Iterator iterator;
         private String message, tempkey;
         private String[] temp;
+        private MulticastSocket multicsk;//Miga20180312
 
         public void run() {
             lMsg = new byte[8192];
+            receivedp = new DatagramPacket(lMsg, lMsg.length);//接收到的message會存在IMsg
+            receiveds = null;
+            try{
+                receiveds = new DatagramSocket(IP_port_for_peer_counting);//接收的Socket
+
+                while(true){
+                    receiveds.receive(receivedp);//把接收到的data存在receivedp
+                    message = new String(lMsg, 0, receivedp.getLength());//將接收到的IMsg轉換成String型態
+                    temp = message.split("#");//將message之中有#則分開存到tmep陣列裡;message = WiFiApName + "#" + Cluster_Name + "#" + "5";
+
+                }
+
+
+            }catch (Exception e){
+
+            }
+/*            lMsg = new byte[8192];
             receivedp = new DatagramPacket(lMsg, lMsg.length);
             receiveds = null;
 
@@ -1768,7 +1787,7 @@ public class Control extends Service {
                 if (sendds != null) {
                     sendds.close();
                 }
-            }
+            }*/
         }
     }
 
@@ -1800,7 +1819,31 @@ public class Control extends Service {
         private String message, tempkey;
 
         public void run() {
-            try {
+            try{
+                sendds = null;
+                sendds = new DatagramSocket();
+                while(true) {
+                    if (Isconnect) {
+                        message = WiFiApName + "#" + Cluster_Name + "#" + "5";// 0: source SSID 1: cluster name 2: TTL
+
+                        // unicast
+                        iterator = IPTable.keySet().iterator();//IPTable的keySet為許多IP所組成
+                        while (iterator.hasNext()) {
+                            tempkey = iterator.next().toString();
+                            dp = new DatagramPacket(message.getBytes(), message.length(),
+                                    InetAddress.getByName(tempkey), IP_port_for_peer_counting);
+                            sendds.send(dp);//一一傳送給IPTable內的所有IP
+                            //Log.d("Leaf0419", "(Proactive)Send the message: " + message + " to " + tempkey);
+                            // s_status = "State : (Proactive)Send the
+                            // message: " + message + " to " + tempkey;
+                        }
+                    }
+                    Thread.sleep(1000);
+                }
+            }catch (Exception e){
+
+            }
+            /*try {
                 sendds = null;
                 sendds = new DatagramSocket();
                 while (true) {
@@ -1847,7 +1890,7 @@ public class Control extends Service {
                 if (sendds != null) {
                     sendds.close();
                 }
-            }
+            }*/
         }
     }
 

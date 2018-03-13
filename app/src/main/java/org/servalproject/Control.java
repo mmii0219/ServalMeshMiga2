@@ -196,7 +196,8 @@ public class Control extends Service {
     //for multicast socket add by Miga 20180129
     private  Enumeration<NetworkInterface> enumeration ;
     private  NetworkInterface p2p0 = null;
-    private MulticastSocket recvSocket;//Miga
+    private MulticastSocket recvSocket;//Miga , for ip table
+    private MulticastSocket recvPeerSocket;//Miga , for peer table
     //for multicast socket End add by Miga
     private boolean IsConnecting=false;
     private String WiFiIpAddr = null;
@@ -761,6 +762,7 @@ public class Control extends Service {
                                 Log.d("Miga", "WiFi_Connect/ROLE: " + ROLE);
                                 STATE = StateFlag.ADD_SERVICE.getIndex();
                                 Isconnect=true;//p2p已有人連上/被連上,目前主要是用來判斷是否可以開始進行Group內peer的計算
+
                                 return;
                             } else {//連上別人
                                 // Try to connect Ap(連上排序第一個or第二個的裝置)
@@ -834,6 +836,7 @@ public class Control extends Service {
                                         }
                                         isOpenSWIAThread=true;
                                     }
+
                                     //CheckChangeIP(WiFiIpAddr);// Miga Add 20180307. 讓client丟自己的wifi ip addr.給GO檢查,並讓GO的IPTable內有這組ip(為了讓GO進行unicast傳送訊息用)
                                     STATE = StateFlag.ADD_SERVICE.getIndex();
                                     Isconnect=true;//p2p已有人連上/被連上,目前主要是用來判斷是否可以開始進行Group內peer的計算
@@ -1444,8 +1447,8 @@ public class Control extends Service {
                         recWiFiIpAddr=recMessage[1];
                         if(recWiFiIpAddr!="fromself") {
                             if(!(recMessage[0].equals(WiFiApName))) {//接收到的不是自己,則可以進行IP判斷
-                                Log.d("Miga", "I got multicast message from:" + recMessagetemp);
-                                s_status = "I got multicast message from:" + recMessagetemp;
+                                //Log.d("Miga", "I got multicast message from:" + recMessagetemp);
+                                //s_status = "I got multicast message from:" + recMessagetemp;
                                 if (IPTable.containsKey(recWiFiIpAddr)) {
                                     //temp = recWiFiIpAddr;
                                     for (i = 2; i < 254; i++) {
@@ -1548,10 +1551,8 @@ public class Control extends Service {
 
 
     public class SendWiFiIpAddr extends Thread{
-        MulticastSocket clientSocket;//Miga
         MulticastSocket multicsk;//Miga20180129
         DatagramPacket msgPkt;//Miga
-        DatagramSocket sendds;
         String message;
 
         public void run() {
@@ -1563,11 +1564,11 @@ public class Control extends Service {
                     /*if(WiFiIpAddr==null||WiFiIpAddr==""){
                         WiFiIpAddr = "fromself";//WiFiIpAddr
                     }*/
-                    message =  WiFiApName+"#" +WiFiIpAddr+"#end";
+                    message =  WiFiApName+"#" +WiFiIpAddr;
                     msgPkt = new DatagramPacket(message.getBytes(), message.length(), multicgroup, 6789);
                     multicsk.send(msgPkt);
-                    Log.v("Miga", "(Proactive)multicsk send message:" + message);
-                    s_status = "(Proactive)multicsk send message" + message;
+                    //Log.v("Miga", "(Proactive)multicsk send message:" + message);
+                    //s_status = "(Proactive)multicsk send message" + message;
                     //Thread.sleep(5000);
 
                 //}
@@ -1632,19 +1633,19 @@ public class Control extends Service {
         if(wifi!=null){
             WifiManager.MulticastLock lock=wifi.createMulticastLock("Miga");
             lock.acquire();
-            Log.d("Miga", "multicast lock open!");
+            //Log.d("Miga", "multicast lock open!");
         }
     }
     //For multicast socket
     public void getP2P0() throws SocketException{
         //receive時要取得p2p0,用p2p0去加入multicast group.否則會跳Exception
         enumeration = NetworkInterface.getNetworkInterfaces();
-        Log.d("Miga", "Enter getP2P0()" );
+        //Log.d("Miga", "Enter getP2P0()" );
         while (enumeration.hasMoreElements()) {
             p2p0 = enumeration.nextElement();
             if (p2p0.getName().equals("p2p0")) {
                 //there is probably a better way to find ethernet interface
-                Log.d("Miga", "getP2P():FindP2P0" );
+                //Log.d("Miga", "getP2P():FindP2P0" );
                 break;
             }
         }
@@ -1687,7 +1688,7 @@ public class Control extends Service {
                 InetAddress multicgroup = InetAddress.getByName("224.0.0.3"); //客戶客戶端將自己加入到指定的multicast group中,這樣就能夠收到來自該組的消息
                 //clientSocket.joinGroup(multicgroup);
                 recvSocket.joinGroup(new InetSocketAddress(multicgroup, 6789), p2p0);//用p2p0 interface來接收muticast pkt
-                Log.d("Miga", "I join multicast group success" + multicgroup);
+                Log.d("Miga", "I join iptable multicast group success" + multicgroup);
                 s_status="I join multicast group!!!!!!!!";
                 isJoin = true;//已加入multicast group
                 //開啟接收multicast的thread
@@ -1700,11 +1701,29 @@ public class Control extends Service {
             Log.d("Miga", "JoinUpdateIPMultiCst Exception:" + e);
         }
     }
+    //加入接收PeerTable的multicast, 於Initial()呼叫
+    public void JoinUpdatePeerMultiCst(){
+
+        try {
+            //getP2P0();
+
+            recvPeerSocket = new MulticastSocket(6790);
+            InetAddress multicgroup = InetAddress.getByName("224.0.0.4"); //客戶客戶端將自己加入到指定的multicast group中,這樣就能夠收到來自該組的消息
+            //clientSocket.joinGroup(multicgroup);
+            recvPeerSocket.joinGroup(new InetSocketAddress(multicgroup, 6790), p2p0);//用p2p0 interface來接收muticast pkt
+            Log.d("Miga", "I join peertable multicast group success" + multicgroup);
+            //s_status="I join multicast group!!!!!!!!";
+
+        }catch (Exception e){
+            Log.d("Miga", "JoinUpdatePeerMultiCst Exception:" + e);
+        }
+    }
     // Miga, For multicast ------------End-------------
 
     // EditLeaf 0812
+    //20180313 End 目前加入multi & uni ,都接收不到
     public class Receive_peer_count extends Thread {
-        private byte[] lMsg;
+        private byte[] lMsg,buf;
         private DatagramPacket receivedp, senddp;
         private DatagramSocket sendds;
         private Iterator iterator;
@@ -1712,23 +1731,101 @@ public class Control extends Service {
         private String[] temp;
         private MulticastSocket multicsk;//Miga20180312
 
+
+        private String recMessagetemp,recWiFiIpAddr;
+        private String[] recMessage;
+        private int i;
+        private DatagramPacket msgPkt;//Miga
+
+
         public void run() {
-            lMsg = new byte[8192];
-            receivedp = new DatagramPacket(lMsg, lMsg.length);//接收到的message會存在IMsg
-            receiveds = null;
+
             try{
+                lMsg = new byte[8192];
+                receivedp = new DatagramPacket(lMsg, lMsg.length);//接收到的message會存在IMsg
+                receiveds = null;
                 receiveds = new DatagramSocket(IP_port_for_peer_counting);//接收的Socket
 
+                //Miga add multicast 20180313 (接收使用multicast)
+                //buf=new byte[8192];
+
                 while(true){
-                    receiveds.receive(receivedp);//把接收到的data存在receivedp
-                    message = new String(lMsg, 0, receivedp.getLength());//將接收到的IMsg轉換成String型態
-                    temp = message.split("#");//將message之中有#則分開存到tmep陣列裡;message = WiFiApName + "#" + Cluster_Name + "#" + "5";
+
+
+
+                    //multicast
+                    //讀取數據
+                    //msgPkt=new DatagramPacket(buf, buf.length);
+
+                    if(receivedp!=null){
+                        //unicast
+                        receiveds.receive(receivedp);//把接收到的data存在receivedp.
+                        //multicast
+                        recvPeerSocket.receive(receivedp);
+                        message = new String(lMsg, 0, receivedp.getLength());//將接收到的IMsg轉換成String型態
+                        Log.d("Miga", "I got message from mul/unicast" +message);
+                        s_status="I got message from mul/unicast"+message;
+
+                        temp = message.split("#");//將message之中有#則分開存到tmep陣列裡;message = WiFiApName + "#" + Cluster_Name + "#" + "5";
+                        if (temp[0] != null && temp[1] != null && temp[2] != null && WiFiApName != null) {
+                            if (Newcompare(temp[0], WiFiApName) != 0) {//接收到的data和此裝置的SSID不同; 若A>B則reutrn 1
+                                // TTL -1
+                                temp[2] = String.valueOf(Integer.valueOf(temp[2]) - 1);//經過一個router因此-1
+                                // update peer table
+                                if (Newcompare(temp[1], Cluster_Name) == 0) {//相同Cluster_Name
+                                    PeerTable.put(temp[0], 10);//填入收到data的SSID(WiFiApName)
+                                    Log.v("Miga", "PeerTable:" + PeerTable);
+                                    s_status="PeerTable:"+PeerTable;
+
+                                }
+                                /*// relay packet
+                                if (Integer.valueOf(temp[2]) > 0) {
+                                    message = temp[0] + "#" + temp[1] + "#" + temp[2];
+                                    sendds = null;
+                                    +
+                                    sendds = new DatagramSocket();
+
+                                    // unicast
+                                    iterator = IPTable.keySet().iterator();
+                                    while (iterator.hasNext()) {
+                                        tempkey = iterator.next().toString();
+                                        senddp = new DatagramPacket(message.getBytes(), message.length(),
+                                                InetAddress.getByName(tempkey), IP_port_for_peer_counting);
+                                        sendds.send(senddp);
+                                        //	Log.d("Leaf0419", "(Relay)Send the message: " + message + " to " + tempkey);
+                                        // s_status = "State : (Relay)Send the
+                                        // message: " + message + " to " + tempkey;
+
+                                    }
+
+
+                                    sendds.close();
+                                }*/
+                            }
+                        }
+                    }
 
                 }
 
 
-            }catch (Exception e){
-
+            }catch (SocketException e) {
+                e.printStackTrace();
+                Log.d("Miga", "Receive_peer_count Socket exception" + e.toString());
+            } catch (IOException e) {
+                e.printStackTrace();
+                Log.d("Miga", "Receive_peer_count IOException" + e.toString());
+            } catch (Exception e) {
+                e.printStackTrace();
+                Log.d("Miga", "Receive_peer_count Exception" + e.toString());
+            } finally {
+                if (receiveds != null) {
+                    receiveds.close();
+                    Log.d("Miga", "Receive_peer_count receiveds is close");
+                }
+                if (sendds != null) {
+                    sendds.close();
+                    Log.d("Miga", "Receive_peer_count sendds is close");
+                }
             }
 /*            lMsg = new byte[8192];
             receivedp = new DatagramPacket(lMsg, lMsg.length);
@@ -1817,6 +1914,8 @@ public class Control extends Service {
         private DatagramSocket sendds;
         private Iterator iterator;
         private String message, tempkey;
+        MulticastSocket multicsk;//Miga20180313
+        DatagramPacket msgPkt;//Miga
 
         public void run() {
             try{
@@ -1833,15 +1932,43 @@ public class Control extends Service {
                             dp = new DatagramPacket(message.getBytes(), message.length(),
                                     InetAddress.getByName(tempkey), IP_port_for_peer_counting);
                             sendds.send(dp);//一一傳送給IPTable內的所有IP
-                            //Log.d("Leaf0419", "(Proactive)Send the message: " + message + " to " + tempkey);
-                            // s_status = "State : (Proactive)Send the
-                            // message: " + message + " to " + tempkey;
+                            //Log.v("Miga", "I send unicast message:" + message);
+                            //s_status="I send unicast message:"+message;
+
+                        }
+
+                        //multicast
+                        if (mConnectivityManager != null) {
+                            mNetworkInfo = mConnectivityManager.getNetworkInfo(ConnectivityManager.TYPE_WIFI);
+                            if (mNetworkInfo.isConnected()) {
+                                InetAddress multicgroup = InetAddress.getByName("224.0.0.4");//指定multicast要發送的group
+                                multicsk = new MulticastSocket(6790);//6790: for peertable update
+                                msgPkt = new DatagramPacket(message.getBytes(), message.length(), multicgroup, 6790);
+                                multicsk.send(msgPkt);
+                                Log.v("Miga", "multicsk send message:" + message);
+                                s_status = "multicsk send message" + message;
+                            }
                         }
                     }
                     Thread.sleep(1000);
                 }
-            }catch (Exception e){
-
+            } catch (SocketException e) {
+                e.printStackTrace();
+                Log.d("Miga", "Send_peer_count Socket exception" + e.toString());
+            } catch (IOException e) {
+                e.printStackTrace();
+                Log.d("Miga", "Send_peer_count IOException" + e.toString());
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+                Log.d("Miga", "Send_peer_count InterruptedException" + e.toString());
+            } catch (Exception e) {
+                e.printStackTrace();
+                Log.d("Miga", "Send_peer_count other exception" + e.toString());
+            } finally {
+                if (sendds != null) {
+                    sendds.close();
+                    Log.d("Miga", "Send_peer_count sendds is close");
+                }
             }
             /*try {
                 sendds = null;
@@ -2045,6 +2172,7 @@ public class Control extends Service {
             //Miga multicast
             //allowMulticast();
             JoinUpdateIPMultiCst();//加入multicast group,為了讓GO來接收連上他的client向他傳送的ip address(ip用來更新IPTable)
+            JoinUpdatePeerMultiCst();//加入multicast group,為了讓所有member來更新peer table
             s_status = "State: Initial Complete : " + " SSID : " + WiFiApName + " Cluster_Name : " + Cluster_Name ;
 
             /*WiFiIpAddr = wifiIpAddress();//取得wifi IP address
@@ -2181,14 +2309,15 @@ public class Control extends Service {
         // Following two threads is for counting peers by our module,
         // since Serval Mesh has already supported a similar function,
         // you can decide whether utilized following code
-        /*if (t_send_peer_count == null) {
+        if (t_send_peer_count == null) {
             t_send_peer_count = new Send_peer_count();
             t_send_peer_count.start();
         }
         if (t_receive_peer_count == null) {
             t_receive_peer_count = new Receive_peer_count();
             t_receive_peer_count.start();
-        }*/
+        }
+
 
         // </aqua0722>
         new Task().execute(State.On);

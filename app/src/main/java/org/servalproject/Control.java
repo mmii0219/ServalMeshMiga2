@@ -202,6 +202,7 @@ public class Control extends Service {
     private boolean IsConnecting=false;
     private String WiFiIpAddr = null;
     private String GO_ClusterName=null;
+    private InetAddress multicgroup;
 
     public enum RoleFlag {
         NONE(0), GO(1), CLIENT(2), BRIDGE(3), WIFI_CLIENT(4);//BRIDGE就是之前的RELAY
@@ -1559,7 +1560,7 @@ public class Control extends Service {
             try {
                 //while(true) {
                     //Thread.sleep(20000);
-                    InetAddress multicgroup = InetAddress.getByName("224.0.0.3");//指定multicast要發送的group
+                    multicgroup = InetAddress.getByName("224.0.0.3");//指定multicast要發送的group
                     multicsk = new MulticastSocket(6789);
                     /*if(WiFiIpAddr==null||WiFiIpAddr==""){
                         WiFiIpAddr = "fromself";//WiFiIpAddr
@@ -1591,7 +1592,7 @@ public class Control extends Service {
             try {
                 //sendds = null;
                 //sendds = new DatagramSocket();
-                InetAddress multicgroup= InetAddress.getByName("224.0.0.3");//指定multicast要發送的group
+                //multicgroup= InetAddress.getByName("224.0.0.3");//指定multicast要發送的group
                 multicsk=new MulticastSocket(6789);
 
                 message =WiFiIpAddr+"#"+WiFiApName;
@@ -1685,7 +1686,7 @@ public class Control extends Service {
             getP2P0();
             if(!isJoin) {
                 recvSocket = new MulticastSocket(6789);
-                InetAddress multicgroup = InetAddress.getByName("224.0.0.3"); //客戶客戶端將自己加入到指定的multicast group中,這樣就能夠收到來自該組的消息
+                multicgroup = InetAddress.getByName("224.0.0.3"); //客戶客戶端將自己加入到指定的multicast group中,這樣就能夠收到來自該組的消息
                 //clientSocket.joinGroup(multicgroup);
                 recvSocket.joinGroup(new InetSocketAddress(multicgroup, 6789), p2p0);//用p2p0 interface來接收muticast pkt
                 Log.d("Miga", "I join iptable multicast group success" + multicgroup);
@@ -1708,7 +1709,7 @@ public class Control extends Service {
             //getP2P0();
 
             recvPeerSocket = new MulticastSocket(6790);
-            InetAddress multicgroup = InetAddress.getByName("224.0.0.4"); //客戶客戶端將自己加入到指定的multicast group中,這樣就能夠收到來自該組的消息
+            multicgroup = InetAddress.getByName("224.0.0.3"); //客戶客戶端將自己加入到指定的multicast group中,這樣就能夠收到來自該組的消息
             //clientSocket.joinGroup(multicgroup);
             recvPeerSocket.joinGroup(new InetSocketAddress(multicgroup, 6790), p2p0);//用p2p0 interface來接收muticast pkt
             Log.d("Miga", "I join peertable multicast group success" + multicgroup);
@@ -1761,7 +1762,7 @@ public class Control extends Service {
                         //unicast
                         receiveds.receive(receivedp);//把接收到的data存在receivedp.
                         //multicast
-                        recvPeerSocket.receive(receivedp);
+                        //recvPeerSocket.receive(receivedp);
                         message = new String(lMsg, 0, receivedp.getLength());//將接收到的IMsg轉換成String型態
                         Log.d("Miga", "I got message from mul/unicast" +message);
                         s_status="I got message from mul/unicast"+message;
@@ -1932,8 +1933,8 @@ public class Control extends Service {
                             dp = new DatagramPacket(message.getBytes(), message.length(),
                                     InetAddress.getByName(tempkey), IP_port_for_peer_counting);
                             sendds.send(dp);//一一傳送給IPTable內的所有IP
-                            //Log.v("Miga", "I send unicast message:" + message);
-                            //s_status="I send unicast message:"+message;
+                            Log.v("Miga", "I send unicast message:" + message);
+                            s_status="I send unicast message:"+message;
 
                         }
 
@@ -1941,7 +1942,7 @@ public class Control extends Service {
                         if (mConnectivityManager != null) {
                             mNetworkInfo = mConnectivityManager.getNetworkInfo(ConnectivityManager.TYPE_WIFI);
                             if (mNetworkInfo.isConnected()) {
-                                InetAddress multicgroup = InetAddress.getByName("224.0.0.4");//指定multicast要發送的group
+                                multicgroup = InetAddress.getByName("224.0.0.3");//指定multicast要發送的group
                                 multicsk = new MulticastSocket(6790);//6790: for peertable update
                                 msgPkt = new DatagramPacket(message.getBytes(), message.length(), multicgroup, 6790);
                                 multicsk.send(msgPkt);
@@ -2068,10 +2069,7 @@ public class Control extends Service {
             initial = new Initial();
             initial.start();
         }
-        /*if (CheckWhichGroup == null) {
-            CheckWhichGroup = new CheckWhichGroup();
-            CheckWhichGroup.start();
-        }*/
+
 
         registerReceiver(receiver_peer = new BroadcastReceiver() {//註冊用來接收peer discovery的peer數量變化的結果
             @Override
@@ -2169,20 +2167,11 @@ public class Control extends Service {
             //s_status = "State: Initial Complete : time : " +( (Calendar.getInstance().getTimeInMillis() - initial_start_time)/1000 + " SSID : " + WiFiApName + " Cluster_Name : " + Cluster_Name)+
             //		" ROLE : " + ROLE + " IPTABLE " + IPTable;
 
-            //Miga multicast
-            //allowMulticast();
+
             JoinUpdateIPMultiCst();//加入multicast group,為了讓GO來接收連上他的client向他傳送的ip address(ip用來更新IPTable)
             JoinUpdatePeerMultiCst();//加入multicast group,為了讓所有member來更新peer table
             s_status = "State: Initial Complete : " + " SSID : " + WiFiApName + " Cluster_Name : " + Cluster_Name ;
 
-            /*WiFiIpAddr = wifiIpAddress();//取得wifi IP address
-            Log.d("Miga", "wifiIpAddress:"+WiFiIpAddr);
-            s_status="state: WiFiIpAddress="+WiFiIpAddr;*/
-            //CheckChangeIP(WiFiIpAddr);// Miga Add 20180307. 讓client丟自己的wifi ip addr.給GO檢查,並讓GO的IPTable內有這組ip(為了讓GO進行unicast傳送訊息用)
-            /*if (SendWiFiIpAddr == null) {
-                SendWiFiIpAddr = new SendWiFiIpAddr();
-                SendWiFiIpAddr.start();
-            }*/
 
         }
     }

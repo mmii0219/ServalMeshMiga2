@@ -1412,9 +1412,8 @@ public class Control extends Service {
         return ipAddressString;
     }
 
-    // Miga edit 20180307. 主要是給GO來進行client的wifi ip addr.的判斷
-    // 若IPTable內沒有重複的ip的話,則直接加入
-    // 若IPTable內有重複的ip, 則產生一組新的ip給client之後再加入到IPTable
+    // Miga edit 20180314 主要是讓GO來接收client傳送過來的wifi ip address
+    // 並將ip儲存於IP Table
     public class CollectIP_server extends Thread {
 
         private PrintWriter out;
@@ -1581,55 +1580,6 @@ public class Control extends Service {
 
         }
     }
-    // Miga Add 20180307. 讓client丟自己的wifi ip addr.給GO檢查,並讓GO的IPTable內有這組ip(為了讓GO進行unicast傳送訊息用)
-    public  void CheckChangeIP(String WiFiIpAddr){
-        MulticastSocket clientSocket;//Miga
-        MulticastSocket multicsk;//Miga20180129
-        DatagramPacket msgPkt;//Miga
-        DatagramSocket sendds;
-        String message;
-
-
-        for(int i=0;i<5;i++){
-            try {
-                //sendds = null;
-                //sendds = new DatagramSocket();
-                //multicgroup= InetAddress.getByName("224.0.0.3");//指定multicast要發送的group
-                multicsk=new MulticastSocket(6789);
-
-                message =WiFiIpAddr+"#"+WiFiApName;
-                msgPkt= new DatagramPacket(message.getBytes(), message.length(), multicgroup, 6789);
-                multicsk.send(msgPkt);
-                Log.v("Miga", "(Proactive)multicsk send message:" + message);
-                s_status="(Proactive)multicsk send message"+message;
-                //i=5;
-
-
-                //Socket Client_socket = new Socket("192.168.49.1", IP_port_for_IPModify);
-                //PrintWriter out = new PrintWriter(Client_socket.getOutputStream());
-                //Log.d("Miga", "Send message: " + WiFiIpAddr);//傳送device的ip address給GO
-                //out.println(WiFiIpAddr+"#"+WiFiApName);//加上WiFiApName主要是用來判斷說這個傳送過來的是不是自己
-                //out.flush();
-                /*BufferedReader in = new BufferedReader(new InputStreamReader(Client_socket.getInputStream()));
-                message = in.readLine();
-                Log.d("Miga", "Receive message: " + message);//從GO那裡接收到的結果
-                String[] s = message.split(":");
-                Log.d("Miga", "Split result: " + s[0] + " " + s[1]);
-                if (Newcompare(s[0], "YES") == 0) {//ip address重複了,因此需要設定新的ip address
-                    boolean result = setIpWithTfiStaticIp(s[1]);
-                    Log.d("Miga", "Modify the static IP address: " + result);
-                }
-                i = 5;
-                in.close();
-                out.close();
-                Client_socket.close();*/
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-        }
-
-    }
-
     // Miga, For multicast ------------Start-------------
     public void allowMulticast(){
         // WifiManager wifi = (WifiManager) getSystemService(Context.WIFI_SERVICE);
@@ -1652,31 +1602,6 @@ public class Control extends Service {
                 break;
             }
         }
-    }
-    //用來判斷wifi 是否以連線,若是的話則開啟multicast socket
-    public class DetectWifiConnected extends Thread{
-        public void run(){
-            try{
-
-            }
-            finally{
-
-            }
-        }
-    }
-    //判斷是否為GO
-    public boolean IsGO(){
-        /*String p2p_Ip = "";
-        p2p_Ip = getP2PIpAddress();
-        //Log.v("Miga", "IsGO() p2p_Ip:" + p2p_Ip);
-        if (p2p_Ip.equals("192.168.49.1") == true) {
-            Isconnect=true;
-            Log.v("Miga", "Isconnect:" + Isconnect);
-            return true;
-        }*/
-        if(ROLE == RoleFlag.GO.getIndex())
-            return true;
-        return false;
     }
     //加入接收IPTable的multicast, 於Initial()呼叫
     public void JoinUpdateIPMultiCst(){
@@ -1723,8 +1648,7 @@ public class Control extends Service {
     }
     // Miga, For multicast ------------End-------------
 
-    // EditLeaf 0812
-    //20180313 End 目前加入multi & uni ,都接收不到
+    //20180314 可成功使用multi, uni接收並relay(GO) pkt出去
     public class Receive_peer_count extends Thread {
         private byte[] lMsg,buf;
         private DatagramPacket receivedp, senddp;
@@ -1753,48 +1677,38 @@ public class Control extends Service {
                 //buf=new byte[8192];
 
                 while(true){
-
                     if(IsP2Pconnect) {
-                        //multicast
-                        //讀取數據
-                        //msgPkt=new DatagramPacket(buf, buf.length);
-
                         if (receivedp != null) {
-
                             if (ROLE == RoleFlag.GO.getIndex()) {
                                 //multicast
-                                recvPeerSocket.receive(receivedp);
+                                recvPeerSocket.receive(receivedp);//recvPeerSocket_ port:6790
                                 message = new String(lMsg, 0, receivedp.getLength());//將接收到的IMsg轉換成String型態
-                                Log.d("Miga", "I got message from multicast" + message);
-                                s_status = "I got message from multicast" + message;
+                                //Log.d("Miga", "I got message from multicast" + message);
+                                //s_status = "I got message from multicast" + message;
                             } else if (ROLE == RoleFlag.CLIENT.getIndex()) {
                                 //unicast
                                 receiveds.receive(receivedp);//把接收到的data存在receivedp.
                                 message = new String(lMsg, 0, receivedp.getLength());//將接收到的IMsg轉換成String型態
-                                Log.d("Miga", "I got message from unicast" + message);
-                                s_status = "I got message from unicast" + message;
+                                //Log.d("Miga", "I got message from unicast" + message);
+                                //s_status = "I got message from unicast" + message;
                             }
 
-                            //if (message != "" || message != null){
-                                temp = message.split("#");//將message之中有#則分開存到tmep陣列裡;message = WiFiApName + "#" + Cluster_Name + "#" + "5";
-                                if (temp[0] != null && temp[1] != null && temp[2] != null && WiFiApName != null) {
-                                    if (Newcompare(temp[0], WiFiApName) != 0) {//接收到的data和此裝置的SSID不同; 若A>B則reutrn 1
-                                        // TTL -1
-                                        temp[2] = String.valueOf(Integer.valueOf(temp[2]) - 1);//經過一個router因此-1
-                                        // update peer table
-                                        if (Newcompare(temp[1], Cluster_Name) == 0) {//相同Cluster_Name
-                                            PeerTable.put(temp[0], 10);//填入收到data的SSID(WiFiApName)
-                                            Log.v("Miga", "PeerTable:" + PeerTable);
-                                            s_status = "PeerTable:" + PeerTable;
-
-                                        }
-                                    /*// relay packet
+                            temp = message.split("#");//將message之中有#則分開存到tmep陣列裡;message = WiFiApName + "#" + Cluster_Name + "#" + "5";
+                            if (temp[0] != null && temp[1] != null && temp[2] != null && WiFiApName != null) {
+                                if (Newcompare(temp[0], WiFiApName) != 0) {//接收到的data和此裝置的SSID不同; 若A>B則reutrn 1
+                                    // TTL -1
+                                    temp[2] = String.valueOf(Integer.valueOf(temp[2]) - 1);//經過一個router因此-1
+                                    // update peer table
+                                    if (Newcompare(temp[1], Cluster_Name) == 0) {//相同Cluster_Name
+                                        PeerTable.put(temp[0], 10);//填入收到data的SSID(WiFiApName)
+                                        Log.v("Miga", "PeerTable:" + PeerTable);
+                                        s_status = "PeerTable:" + PeerTable;
+                                    }
+                                    // relay packet
                                     if (Integer.valueOf(temp[2]) > 0) {
                                         message = temp[0] + "#" + temp[1] + "#" + temp[2];
                                         sendds = null;
-                                        +
                                         sendds = new DatagramSocket();
-
                                         // unicast
                                         iterator = IPTable.keySet().iterator();
                                         while (iterator.hasNext()) {
@@ -1802,18 +1716,16 @@ public class Control extends Service {
                                             senddp = new DatagramPacket(message.getBytes(), message.length(),
                                                     InetAddress.getByName(tempkey), IP_port_for_peer_counting);
                                             sendds.send(senddp);
-                                            //	Log.d("Leaf0419", "(Relay)Send the message: " + message + " to " + tempkey);
-                                            // s_status = "State : (Relay)Send the
-                                            // message: " + message + " to " + tempkey;
+                                            //Log.d("Miga", "(Relay)Send the message: " + message + " to " + tempkey);
+                                            //s_status = "State : (Relay)Send the message: " + message + " to " + tempkey;
 
                                         }
 
 
                                         sendds.close();
-                                    }*/
                                     }
                                 }
-                            //}
+                            }
                         }
                     }
 
@@ -1900,7 +1812,6 @@ public class Control extends Service {
         }
     }
 
-    // EditLeaf0812
     public int count_peer() {
         //By Leaf
         int result = 0;
@@ -1920,7 +1831,6 @@ public class Control extends Service {
         return result;
     }
 
-    // EditLeaf 0812
     public class Send_peer_count extends Thread {
         private DatagramPacket dp;
         private DatagramSocket sendds;
@@ -1944,8 +1854,8 @@ public class Control extends Service {
                             dp = new DatagramPacket(message.getBytes(), message.length(),
                                     InetAddress.getByName(tempkey), IP_port_for_peer_counting);
                             sendds.send(dp);//一一傳送給IPTable內的所有IP
-                            Log.v("Miga", "I send unicast message:" + message);
-                            s_status="I send unicast message:"+message;
+                            //Log.v("Miga", "I send unicast message:" + message);
+                            //s_status="I send unicast message:"+message;
 
                         }
 
@@ -1957,10 +1867,22 @@ public class Control extends Service {
                                 multicsk = new MulticastSocket(6790);//6790: for peertable update
                                 msgPkt = new DatagramPacket(message.getBytes(), message.length(), multicgroup, 6790);
                                 multicsk.send(msgPkt);
-                                Log.v("Miga", "multicsk send message:" + message);
-                                s_status = "multicsk send message" + message;
+                                //Log.v("Miga", "multicsk send message:" + message);
+                                //s_status = "multicsk send message" + message;
                             }
                         }
+                        //下面的update感覺是為了確保peer還在 group內所需,
+                        //因為若peer不在了,則他的值會在每一次執行這個thread時,所對應的value會一直遞減.
+                        //若peer還在group內,則他會藉由再傳送過來的peer資料,將所對應的value更新為10 (receive_peer_count)
+                        // update peer table
+                        /*iterator = PeerTable.keySet().iterator();
+                        while (iterator.hasNext()) {
+                            tempkey = iterator.next().toString();
+                            PeerTable.put(tempkey, PeerTable.get(tempkey) - 1);//一一把PeerTable內對應到的SSID的value-1
+                            if (PeerTable.get(tempkey) <= 0) {//value值
+                                PeerTable.remove(tempkey);//將此SSID移除
+                            }
+                        }*/
                     }
                     Thread.sleep(1000);
                 }

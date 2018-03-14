@@ -203,6 +203,7 @@ public class Control extends Service {
     private String WiFiIpAddr = null;
     private String GO_ClusterName=null;
     private InetAddress multicgroup;
+    private boolean IsP2Pconnect = false;//Miga 20180314 連線後不論是GO或是CLIENT都會將這個值設為True, send/receive_peer_count 會使用到
 
     public enum RoleFlag {
         NONE(0), GO(1), CLIENT(2), BRIDGE(3), WIFI_CLIENT(4);//BRIDGE就是之前的RELAY
@@ -763,7 +764,7 @@ public class Control extends Service {
                                 Log.d("Miga", "WiFi_Connect/ROLE: " + ROLE);
                                 STATE = StateFlag.ADD_SERVICE.getIndex();
                                 Isconnect=true;//p2p已有人連上/被連上,目前主要是用來判斷是否可以開始進行Group內peer的計算
-
+                                IsP2Pconnect=true;
                                 return;
                             } else {//連上別人
                                 // Try to connect Ap(連上排序第一個or第二個的裝置)
@@ -841,6 +842,7 @@ public class Control extends Service {
                                     //CheckChangeIP(WiFiIpAddr);// Miga Add 20180307. 讓client丟自己的wifi ip addr.給GO檢查,並讓GO的IPTable內有這組ip(為了讓GO進行unicast傳送訊息用)
                                     STATE = StateFlag.ADD_SERVICE.getIndex();
                                     Isconnect=true;//p2p已有人連上/被連上,目前主要是用來判斷是否可以開始進行Group內peer的計算
+                                    IsP2Pconnect=true;
                                     //isCheck = true;//檢查完畢
                                 }
                                 IsConnecting=false;
@@ -1752,57 +1754,66 @@ public class Control extends Service {
 
                 while(true){
 
-
-
-                    //multicast
-                    //讀取數據
-                    //msgPkt=new DatagramPacket(buf, buf.length);
-
-                    if(receivedp!=null){
-                        //unicast
-                        receiveds.receive(receivedp);//把接收到的data存在receivedp.
+                    if(IsP2Pconnect) {
                         //multicast
-                        //recvPeerSocket.receive(receivedp);
-                        message = new String(lMsg, 0, receivedp.getLength());//將接收到的IMsg轉換成String型態
-                        Log.d("Miga", "I got message from mul/unicast" +message);
-                        s_status="I got message from mul/unicast"+message;
+                        //讀取數據
+                        //msgPkt=new DatagramPacket(buf, buf.length);
 
-                        temp = message.split("#");//將message之中有#則分開存到tmep陣列裡;message = WiFiApName + "#" + Cluster_Name + "#" + "5";
-                        if (temp[0] != null && temp[1] != null && temp[2] != null && WiFiApName != null) {
-                            if (Newcompare(temp[0], WiFiApName) != 0) {//接收到的data和此裝置的SSID不同; 若A>B則reutrn 1
-                                // TTL -1
-                                temp[2] = String.valueOf(Integer.valueOf(temp[2]) - 1);//經過一個router因此-1
-                                // update peer table
-                                if (Newcompare(temp[1], Cluster_Name) == 0) {//相同Cluster_Name
-                                    PeerTable.put(temp[0], 10);//填入收到data的SSID(WiFiApName)
-                                    Log.v("Miga", "PeerTable:" + PeerTable);
-                                    s_status="PeerTable:"+PeerTable;
+                        if (receivedp != null) {
 
-                                }
-                                /*// relay packet
-                                if (Integer.valueOf(temp[2]) > 0) {
-                                    message = temp[0] + "#" + temp[1] + "#" + temp[2];
-                                    sendds = null;
-                                    +
-                                    sendds = new DatagramSocket();
-
-                                    // unicast
-                                    iterator = IPTable.keySet().iterator();
-                                    while (iterator.hasNext()) {
-                                        tempkey = iterator.next().toString();
-                                        senddp = new DatagramPacket(message.getBytes(), message.length(),
-                                                InetAddress.getByName(tempkey), IP_port_for_peer_counting);
-                                        sendds.send(senddp);
-                                        //	Log.d("Leaf0419", "(Relay)Send the message: " + message + " to " + tempkey);
-                                        // s_status = "State : (Relay)Send the
-                                        // message: " + message + " to " + tempkey;
-
-                                    }
-
-
-                                    sendds.close();
-                                }*/
+                            if (ROLE == RoleFlag.GO.getIndex()) {
+                                //multicast
+                                recvPeerSocket.receive(receivedp);
+                                message = new String(lMsg, 0, receivedp.getLength());//將接收到的IMsg轉換成String型態
+                                Log.d("Miga", "I got message from multicast" + message);
+                                s_status = "I got message from multicast" + message;
+                            } else if (ROLE == RoleFlag.CLIENT.getIndex()) {
+                                //unicast
+                                receiveds.receive(receivedp);//把接收到的data存在receivedp.
+                                message = new String(lMsg, 0, receivedp.getLength());//將接收到的IMsg轉換成String型態
+                                Log.d("Miga", "I got message from unicast" + message);
+                                s_status = "I got message from unicast" + message;
                             }
+
+                            //if (message != "" || message != null){
+                                temp = message.split("#");//將message之中有#則分開存到tmep陣列裡;message = WiFiApName + "#" + Cluster_Name + "#" + "5";
+                                if (temp[0] != null && temp[1] != null && temp[2] != null && WiFiApName != null) {
+                                    if (Newcompare(temp[0], WiFiApName) != 0) {//接收到的data和此裝置的SSID不同; 若A>B則reutrn 1
+                                        // TTL -1
+                                        temp[2] = String.valueOf(Integer.valueOf(temp[2]) - 1);//經過一個router因此-1
+                                        // update peer table
+                                        if (Newcompare(temp[1], Cluster_Name) == 0) {//相同Cluster_Name
+                                            PeerTable.put(temp[0], 10);//填入收到data的SSID(WiFiApName)
+                                            Log.v("Miga", "PeerTable:" + PeerTable);
+                                            s_status = "PeerTable:" + PeerTable;
+
+                                        }
+                                    /*// relay packet
+                                    if (Integer.valueOf(temp[2]) > 0) {
+                                        message = temp[0] + "#" + temp[1] + "#" + temp[2];
+                                        sendds = null;
+                                        +
+                                        sendds = new DatagramSocket();
+
+                                        // unicast
+                                        iterator = IPTable.keySet().iterator();
+                                        while (iterator.hasNext()) {
+                                            tempkey = iterator.next().toString();
+                                            senddp = new DatagramPacket(message.getBytes(), message.length(),
+                                                    InetAddress.getByName(tempkey), IP_port_for_peer_counting);
+                                            sendds.send(senddp);
+                                            //	Log.d("Leaf0419", "(Relay)Send the message: " + message + " to " + tempkey);
+                                            // s_status = "State : (Relay)Send the
+                                            // message: " + message + " to " + tempkey;
+
+                                        }
+
+
+                                        sendds.close();
+                                    }*/
+                                    }
+                                }
+                            //}
                         }
                     }
 
@@ -1923,7 +1934,7 @@ public class Control extends Service {
                 sendds = null;
                 sendds = new DatagramSocket();
                 while(true) {
-                    if (Isconnect) {
+                    if (IsP2Pconnect) {
                         message = WiFiApName + "#" + Cluster_Name + "#" + "5";// 0: source SSID 1: cluster name 2: TTL
 
                         // unicast

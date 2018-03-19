@@ -1734,14 +1734,18 @@ public class Control extends Service {
                         //因為若peer不在了,則他的值會在每一次執行這個thread時,所對應的value會一直遞減.
                         //若peer還在group內,則他會藉由再傳送過來的peer資料,將所對應的value更新為10 (receive_peer_count)
                         // update peer table
-                        /*iterator = PeerTable.keySet().iterator();
+                        iterator = PeerTable.keySet().iterator();
                         while (iterator.hasNext()) {
                             tempkey = iterator.next().toString();
                             PeerTable.put(tempkey, PeerTable.get(tempkey) - 1);//一一把PeerTable內對應到的SSID的value-1
                             if (PeerTable.get(tempkey) <= 0) {//value值
                                 PeerTable.remove(tempkey);//將此SSID移除
+                                Log.v("Miga", "remove PeerTable("+tempkey+"):" + PeerTable);
+                                s_status = "remove PeerTable("+tempkey+"):" + PeerTable;
                             }
-                        }*/
+                        }
+                        //Log.v("Miga", "PeerTable:" + PeerTable);
+                        //s_status = "PeerTable:" + PeerTable;
                     }
                     Thread.sleep(1000);
                 }

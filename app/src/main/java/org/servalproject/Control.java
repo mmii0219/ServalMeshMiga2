@@ -198,12 +198,14 @@ public class Control extends Service {
     private  NetworkInterface p2p0 = null;
     private MulticastSocket recvSocket;//Miga , for ip table
     private MulticastSocket recvPeerSocket;//Miga , for peer table
+    private InetAddress multicgroup;
     //for multicast socket End add by Miga
     private boolean IsConnecting=false;
     private String WiFiIpAddr = null;
     private String GO_ClusterName=null;
-    private InetAddress multicgroup;
     private boolean IsP2Pconnect = false;//Miga 20180314 連線後不論是GO或是CLIENT都會將這個值設為True, send/receive_peer_count 會使用到
+    private int detect_run = 0;//用來讓go的裝置來++執行WiFi_Connect的次數
+    private int pre_peer_count = 0;
 
     public enum RoleFlag {
         NONE(0), GO(1), CLIENT(2), BRIDGE(3), WIFI_CLIENT(4);//BRIDGE就是之前的RELAY
@@ -515,6 +517,13 @@ public class Control extends Service {
 
     public class WiFi_Connect extends Thread {
         //int TryNum;
+        String SSID = null;
+        String key = null;
+        String Name = null;//Cluster_Name
+        String PEER = null;
+        String MAC = null;
+        String POWER = null;
+        String GroupPEER = null;
 
         public void run() {
             try {
@@ -534,15 +543,16 @@ public class Control extends Service {
                     Thread.sleep(100);
                     collect_num--;
                 }
+                sleep_time = sleep_time + 1000;
                 Log.d("Miga", "WiFi_Connect/Collect data and record size : " + record_set+record_set.size());
                 s_status="state: WiFi_Connect/Receive record size:"+record_set.size();
 
-                if(InfoChangeTime < 5) {//交換次數少於5次
+                if(InfoChangeTime < 3) {//交換次數少於5次
                     STATE = StateFlag.ADD_SERVICE.getIndex();//再去重新加入資料並交換
                     return;
                 }
 
-                Log.d("Miga", "WiFi_Connect/InfoChangeTime>=5");
+                Log.d("Miga", "WiFi_Connect/InfoChangeTime>=3");
                 if (record_set.size() == 0) {//都沒蒐集到其他人的裝置,則重新再去收集資料
                     Log.d("Miga", "WiFi_Connect/Collect data and record size = 0");
                     STATE = StateFlag.ADD_SERVICE.getIndex();
@@ -550,15 +560,7 @@ public class Control extends Service {
                     return;
                 }
                 //Log.d("Miga", "WiFi_Connect/ROLE:"+ROLE);
-                if(ROLE == RoleFlag.NONE.getIndex()) {//還沒檢查並連線過,則進行判斷
-                    String SSID = null;
-                    String key = null;
-                    String Name = null;//Cluster_Name
-                    String PEER = null;
-                    String MAC = null;
-                    String POWER = null;
-                    String GroupPEER = null;
-                    //String GO;
+                if(ROLE == RoleFlag.NONE.getIndex() || ROLE == RoleFlag.GO.getIndex()) {
                     Collect_record.clear();
                     for (Object set_key : record_set.keySet()) {
                         record = record_set.get(set_key);
@@ -581,7 +583,7 @@ public class Control extends Service {
                     }
                     //也加入自己的data
                     Step1Data_set self = new Step1Data_set(WiFiApName, GOpasswd, Cluster_Name,
-                            String.valueOf(peercount), GO_mac, String.valueOf(power_level),String.valueOf(grouppeer+1));
+                            String.valueOf(peercount), GO_mac, String.valueOf(power_level), String.valueOf(grouppeer));
 
                     if (!Collect_record.contains(self)) {
                         Collect_record.add(self);
@@ -609,16 +611,21 @@ public class Control extends Service {
                     Name = Collect_record.get(0).getName();
                     PEER = Collect_record.get(0).getPEER();
                     MAC = Collect_record.get(0).getMAC();
+                }
+
+                if(ROLE == RoleFlag.NONE.getIndex()) {//還沒檢查並連線過,則進行判斷
                     if (mConnectivityManager != null) {
                         mNetworkInfo = mConnectivityManager.getNetworkInfo(ConnectivityManager.TYPE_WIFI);
                         if (!mNetworkInfo.isConnected()) {//Wifi還沒連上其他GO,則進行連線
                             if (SSID.equals(WiFiApName)) {
                                 //如果自己是排序第一個的話則不做事,只需等待別人來連線
                                 ROLE = RoleFlag.GO.getIndex();//變為GO
+                                Log.d("Miga","CreateGroup time : " + Double.toString(((Calendar.getInstance().getTimeInMillis() - start_time) / 1000.0))  +" stay_time : " +  Double.toString((sleep_time/1000.0))
+                                        +  " Round_Num :" + NumRound);
                                 Log.d("Miga", "WiFi_Connect/ROLE: " + ROLE);
                                 STATE = StateFlag.ADD_SERVICE.getIndex();
-                                Isconnect=true;//p2p已有人連上/被連上,目前主要是用來判斷是否可以開始進行Group內peer的計算
-                                IsP2Pconnect=true;
+                                Isconnect=true;
+                                IsP2Pconnect=true;//p2p已有人連上/被連上,目前主要是用來判斷是否可以開始進行Group內peer的計算
                                 return;
                             } else {//連上別人
                                 // Try to connect Ap(連上排序第一個or第二個的裝置)
@@ -642,9 +649,9 @@ public class Control extends Service {
                                 wifi.startScan();//startScan完畢後，wifi會呼叫SCAN_RESULTS_AVAILABLE_ACTION
                                 long wifiscan_time_start = Calendar.getInstance().getTimeInMillis();
                                 while (wifiScanCheck == false) {//在onCreate時有註冊一個廣播器,專門來徵測wifi scan的結果,wifi.startscan完畢後,wifiScanCheck應該會變為true
+                                    ;
                                 }
-                                ;
-                                //sleep_time = sleep_time + Calendar.getInstance().getTimeInMillis() - wifiscan_time_start;
+                                sleep_time = sleep_time + Calendar.getInstance().getTimeInMillis() - wifiscan_time_start;
                                 wifiScanCheck = false;
                                 boolean findIsGoExist = false;
 
@@ -682,6 +689,10 @@ public class Control extends Service {
                                     // renew service record information
                                     Cluster_Name = Name;//將自己的Cluster_Name更新為新的GO的Cluster_Name //Miga 20180118 將自己的clusterName更新了
                                     ROLE = RoleFlag.CLIENT.getIndex();//變為CLIENT
+                                    s_status = "JoinGroup time : " + Double.toString(((Calendar.getInstance().getTimeInMillis() - start_time) / 1000.0))  +" stay_time : " +  Double.toString((sleep_time/1000.0))
+                                            +  " Round_Num :" + NumRound;
+                                    Log.d("Miga","JoinGroup time : " + Double.toString(((Calendar.getInstance().getTimeInMillis() - start_time) / 1000.0))  +" stay_time : " +  Double.toString((sleep_time/1000.0))
+                                            +  " Round_Num :" + NumRound);
                                     WiFiIpAddr = wifiIpAddress();//取得wifi IP address
                                     Log.d("Miga", "WiFi_Connect/ROLE:" + ROLE + "Cluster_Name:" + Cluster_Name+" wifiIpAddress:"+WiFiIpAddr);
                                     s_status="state: WiFiIpAddress="+WiFiIpAddr;
@@ -695,184 +706,145 @@ public class Control extends Service {
 
                                     //CheckChangeIP(WiFiIpAddr);// Miga Add 20180307. 讓client丟自己的wifi ip addr.給GO檢查,並讓GO的IPTable內有這組ip(為了讓GO進行unicast傳送訊息用)
                                     STATE = StateFlag.ADD_SERVICE.getIndex();
-                                    Isconnect=true;//p2p已有人連上/被連上,目前主要是用來判斷是否可以開始進行Group內peer的計算
-                                    IsP2Pconnect=true;
+                                    Isconnect=true;
+                                    IsP2Pconnect=true;//p2p已有人連上/被連上,目前主要是用來判斷是否可以開始進行Group內peer的計算
                                     //isCheck = true;//檢查完畢
                                 }
                                 IsConnecting=false;
+                                return;
                             }
-
                         }
                     }//End mConnectivityManager != null
                 }
-                /*if(ROLE == RoleFlag.CLIENT.getIndex()) {
+
+                // GO檢查自己是否被其他裝置連
+                if ( ROLE == RoleFlag.GO.getIndex()) {
+                    if(peerCount > 1) {//peerCount是計算同個group內裡面有幾個device,若是>1的話表示GO有被其他裝置連(=1表示只有GO自己)
+                        detect_run = 0;
+                        STATE = StateFlag.ADD_SERVICE.getIndex();
+                        return;
+                    }else if(detect_run < 5){//若peerCount=1,且detect_run<5(給GO 5次機會去看看Group內會不會將來有device連上他)
+                        detect_run++;
+                        STATE = StateFlag.ADD_SERVICE.getIndex();
+                        return;
+                    }
+                    //GO被孤立
+                    //利用line1080抓get(0)來檢查
+                    if (SSID.equals(WiFiApName) ) {//會相等表示line1080抓到的是自己的data(自己將來應該是這群device的GO),因此檢查有沒有被其他裝置連並且檢查是否孤立
+                        //Miga20180117 會執行到這邊的原因是因為GO被孤立了,因為他的peerCount不大於0,表示他的cluster內只有自己一個人
+                        if (Collect_record.get(1) != null) {//因為自己是GO,但是peerCount又沒有>1,表示說應該是被孤立了,因此將SSID改設為排序第二的device,之後可能會連到該device
+                            SSID = Collect_record.get(1).getSSID();//因此這個被孤立的GO//Miga20180117 peerCount應該是計算同個cluster內裡面有幾個device,若是>0的話表示GO有被其他裝置連(因為同cluster內數量>0)
+                            key = Collect_record.get(1).getkey();
+                            Name = Collect_record.get(1).getName();
+                            PEER = Collect_record.get(1).getPEER();
+                            MAC = Collect_record.get(1).getMAC();
+                        } else {//完全被孤立,附近都沒有裝置可以連,因此回到ADD_SERVICE繼續搜尋
+                            detect_run = 0;
+                            STATE = StateFlag.ADD_SERVICE.getIndex();
+                            return;
+                        }
+
+                    }
+                    //用WIFI_INTERFACE去聯別人
+                    STATE = StateFlag.WAITING.getIndex();
+                    s_status = "State: GO choosing peer";
+                    Log.d("Miga", "State: GO choosing peer");
+
+                    if (mConnectivityManager != null) {
+                        mNetworkInfo = mConnectivityManager.getNetworkInfo(ConnectivityManager.TYPE_WIFI);
+                        if (mNetworkInfo != null) {
+                            if (mNetworkInfo.isConnected() == true) {//Wifi interface有連上
+                                wifi.disconnect();//斷掉wifi interface的連線,
+                                Thread.sleep(1000);
+                                sleep_time = sleep_time + 1000;
+                            }
+                        }
+                    }
+                    List<WifiConfiguration> list = wifi.getConfiguredNetworks();
+                    for (WifiConfiguration i : list) {
+                        wifi.removeNetwork(i.networkId);//移除所有之前wifi連線網路的設定
+                        wifi.saveConfiguration();//除存設定
+                    }
+                    //連上別人
+                    // Try to connect Ap(連上排序第一個or第二個的裝置)
+                    IsConnecting=true;//正在連線中,避免Reconnecting_Wifi繼續執行
+                    WifiConfiguration wc = new WifiConfiguration();
+                    s_status = "State: choosing peer done, try to associate with" + ": SSID name: " + SSID + " , passwd: " + key;
+                    Log.d("Miga", "State: choosing peer done, try to associate with" + ": SSID name: " + SSID + " , passwd: " + key);
+                    wc.SSID = "\"" + SSID + "\"";
+                    wc.preSharedKey = "\"" + key + "\"";
+                    wc.hiddenSSID = true;
+                    wc.status = WifiConfiguration.Status.ENABLED;
+                    wc.allowedGroupCiphers.set(WifiConfiguration.GroupCipher.TKIP);
+                    wc.allowedGroupCiphers.set(WifiConfiguration.GroupCipher.CCMP);
+                    wc.allowedKeyManagement.set(WifiConfiguration.KeyMgmt.WPA_PSK);
+                    wc.allowedPairwiseCiphers.set(WifiConfiguration.PairwiseCipher.TKIP);
+                    wc.allowedPairwiseCiphers.set(WifiConfiguration.PairwiseCipher.CCMP);
+                    wc.allowedProtocols.set(WifiConfiguration.Protocol.RSN);
+                    TryNum = 25;
+                    //檢查我們所要連的GO是否還存在
+                    wifiScanCheck = false;
+                    long wifiscan_time_start = Calendar.getInstance().getTimeInMillis();
+                    while (wifiScanCheck == false) {//在onCreate時有註冊一個廣播器,專門來徵測wifi scan的結果,wifi.startscan完畢後,wifiScanCheck應該會變為true
+                        ;
+                    }
+                    sleep_time = sleep_time + Calendar.getInstance().getTimeInMillis() - wifiscan_time_start;
+                    wifiScanCheck = false;
+                    boolean findIsGoExist = false;
+
+                    for (int i = 0; i < wifi_scan_results.size(); i++) {//檢查接下來要連上的GO還在不在,wifi_scan_results:會列出掃描到的所有AP
+                        ScanResult sr = wifi_scan_results.get(i);
+                        if (sr.SSID.equals(SSID)) {//去比對每一個掃描到的AP,看是不是我們要連上的GO,若是則將findIsGoExist設為true並跳出for迴圈
+                            findIsGoExist = true;
+                            break;
+                        }
+                    }
+                    //Log.d("Miga", "WiFi_Connect/findIsGoExist : " + findIsGoExist);
+                    if (findIsGoExist == false) {//若我們要連的GO不見的話,則回到ADD_SERVICE,重新再收集資料一次.20180307Miga 這裡可能要再想一下後面的流程
+                        STATE = StateFlag.ADD_SERVICE.getIndex();
+                        return;
+                    }
+
+                    //使用wifi interface連線,連上GO
+                    int res = wifi.addNetwork(wc);
+                    isWifiConnect = wifi.enableNetwork(res, true);//學長的temp
+                    while (!mNetworkInfo.isConnected() && TryNum > 0) {//wifi interface沒成功連上,開始不斷嘗試連接
+                        isWifiConnect = wifi.enableNetwork(res, true);
+                        Thread.sleep(1000);
+                        sleep_time = sleep_time + 1000;
+                        TryNum--;
+
+                        s_status = "State: associating GO, enable true:?" + isWifiConnect + " remainder #attempt:"
+                                + TryNum;
+                        Log.d("Miga", "State: associating GO, enable true:?" + isWifiConnect
+                                + " remainder #attempt:" + TryNum);
+                        mNetworkInfo = mConnectivityManager.getNetworkInfo(ConnectivityManager.TYPE_WIFI);
+                    }//End While
+
+                    //成功連上GO
                     if (mNetworkInfo.isConnected()) {
                         // renew service record information
                         Cluster_Name = Name;//將自己的Cluster_Name更新為新的GO的Cluster_Name //Miga 20180118 將自己的clusterName更新了
                         ROLE = RoleFlag.CLIENT.getIndex();//變為CLIENT
                         WiFiIpAddr = wifiIpAddress();//取得wifi IP address
-                        Log.d("Miga", "WiFi_Connect/ROLE:" + ROLE + "Cluster_Name:" + Cluster_Name + " wifiIpAddress:" + WiFiIpAddr);
-                        s_status = "state: WiFiIpAddress=" + WiFiIpAddr;
-                        if (!isOpenSWIAThread) {//開啟client傳送wifi ip address thread給GO
+                        Log.d("Miga", "WiFi_Connect/ROLE:" + ROLE + "Cluster_Name:" + Cluster_Name+" wifiIpAddress:"+WiFiIpAddr);
+                        s_status="state: WiFiIpAddress="+WiFiIpAddr;
+                        if(!isOpenSWIAThread){//開啟client傳送wifi ip address thread給GO
                             if (SendWiFiIpAddr == null) {
                                 SendWiFiIpAddr = new SendWiFiIpAddr();
                                 SendWiFiIpAddr.start();
                             }
-                            isOpenSWIAThread = true;
+                            isOpenSWIAThread=true;
                         }
+
                         //CheckChangeIP(WiFiIpAddr);// Miga Add 20180307. 讓client丟自己的wifi ip addr.給GO檢查,並讓GO的IPTable內有這組ip(為了讓GO進行unicast傳送訊息用)
                         STATE = StateFlag.ADD_SERVICE.getIndex();
-                        Isconnect = true;//p2p已有人連上/被連上,目前主要是用來判斷是否可以開始進行Group內peer的計算
-                        //isCheck = true;//檢查完畢
+                        Isconnect=true;//p2p已有人連上/被連上,目前主要是用來判斷是否可以開始進行Group內peer的計算
+                        IsP2Pconnect=true;
                     }
+                    IsConnecting=false;
+                    return;
                 }
-*/
-                //Log.d("Miga", "Collect data and record size : " + record_set+record_set.size());
-            	/*
-                String SSID = record.get("SSID").toString();
-                String key = record.get("PWD").toString();
-                String Name = record.get("Name").toString();
-                String PEER = record.get("PEER").toString();
-                //s_status = Long.toString((Calendar.getInstance().getTimeInMillis() - start_time ) / 1000) + "s/ " + sleep_time + "s, round: " + NumRound + ", State: choosing peer, step 1";
-                s_status = "State: choosing peer";
-                Log.d("Leaf0419", "State: choosing peer, step 1");
-                if (Isconnect == true && STATE == StateFlag.DISCOVERY_SERVICE.getIndex()) {
-                    Log.d("Leaf0419", "State: choosing peer, step 2,  with: " + SSID);
-                    if (Newcompare(Name, Cluster_Name) == 0) {
-                        return;
-                    }
-
-                        int peercount = count_peer();
-                        if (Integer.valueOf(PEER) < peercount) {
-                            return;
-                        } else if (Integer.valueOf(PEER) == peercount) {
-                            if (Newcompare(Name, Cluster_Name) <= 0) {
-                                return;
-                            }
-                        }
-
-                    Log.d("Leaf0419", "State: choosing peer, step 3");
-                    STATE = StateFlag.REMOVE_GROUP.getIndex();
-                    try {
-                        // Leaf0616
-                        if (mConnectivityManager != null) {
-                            mNetworkInfo = mConnectivityManager.getNetworkInfo(ConnectivityManager.TYPE_WIFI);
-                            if (mNetworkInfo != null) {
-                                if (mNetworkInfo.isConnected() == true) {
-                                    wifi.disconnect();
-                                    Thread.sleep(1000);
-                                }
-                            }
-                        }
-                        List<WifiConfiguration> list = wifi.getConfiguredNetworks();
-                        for (WifiConfiguration i : list) {
-                            wifi.removeNetwork(i.networkId);
-                            wifi.saveConfiguration();
-                        }
-
-                        STATE = StateFlag.WIFI_CONNECT.getIndex();
-                        // Try to connect Ap
-                        WifiConfiguration wc = new WifiConfiguration();
-                        total_time = total_time + (Calendar.getInstance().getTimeInMillis() - start_time) / 1000;
-                        //s_status = Long.toString((Calendar.getInstance().getTimeInMillis() - start_time ) / 1000) + "s/ " + sleep_time + "s, round: " + NumRound + ", State: choosing peer done, try to associate with" + ": SSID name: " + SSID + " , passwd: " + key;
-                        s_status = "State: choosing peer done, try to associate with" + ": SSID name: " + SSID + " , passwd: " + key;
-                        Log.d("Leaf0419", "State: choosing peer done, try to associate with" + ": SSID name: " + SSID + " , passwd: " + key);
-                        wc.SSID = "\"" + SSID + "\"";
-                        wc.preSharedKey = "\"" + key + "\"";
-                        wc.hiddenSSID = true;
-                        wc.status = WifiConfiguration.Status.ENABLED;
-                        wc.allowedGroupCiphers.set(WifiConfiguration.GroupCipher.TKIP);
-                        wc.allowedGroupCiphers.set(WifiConfiguration.GroupCipher.CCMP);
-                        wc.allowedKeyManagement.set(WifiConfiguration.KeyMgmt.WPA_PSK);
-                        wc.allowedPairwiseCiphers.set(WifiConfiguration.PairwiseCipher.TKIP);
-                        wc.allowedPairwiseCiphers.set(WifiConfiguration.PairwiseCipher.CCMP);
-                        wc.allowedProtocols.set(WifiConfiguration.Protocol.RSN);
-                        TryNum = 4;
-                        wifi.startScan();
-                        Thread.sleep(5000);
-                        int res = wifi.addNetwork(wc);
-                        boolean temp = wifi.enableNetwork(res, true);
-                        if (mConnectivityManager != null) {
-                            mNetworkInfo = mConnectivityManager.getNetworkInfo(ConnectivityManager.TYPE_WIFI);
-                            if (mNetworkInfo != null) {
-                                while (!mNetworkInfo.isConnected() && TryNum >= 0) {
-                                    //res = wifi.addNetwork(wc);
-                                    temp = wifi.enableNetwork(res, true);
-                                    Thread.sleep(5000);
-                                    TryNum--;
-                                    total_time = total_time + (Calendar.getInstance().getTimeInMillis() - start_time) / 1000;
-                                    //s_status = Long.toString((Calendar.getInstance().getTimeInMillis() - start_time ) / 1000) + "s/ " + sleep_time + "s, round: " + NumRound + ", State: associating GO, enable true:?" + temp +" remainder #attempt:"+ TryNum;
-                                    s_status = "State: associating GO, enable true:?" + temp + " remainder #attempt:" + TryNum;
-                                    Log.d("Leaf0419", "State: associating GO, enable true:?" + temp + " remainder #attempt:" + TryNum);
-                                    mNetworkInfo = mConnectivityManager.getNetworkInfo(ConnectivityManager.TYPE_WIFI);
-                                }
-                                if (mNetworkInfo.isConnected() == true) {
-                                    // renew service record information
-                                    Cluster_Name = Name;
-                                    if (manager != null) {
-                                        manager.removeGroup(channel, null);
-                                    }
-                                    Thread.sleep(3000);
-                                    // check whether change IP
-                                    // EditLeaf0802
-                                    String message = wifiIpAddress();
-                                    IPTable = new HashMap<String, Integer>();
-                                    IPTable.put(message, 0);
-                                    Log.d("Leaf0419", "State: set IPTable: " + Integer.valueOf(message.substring(message.lastIndexOf(".") + 1)));
-                                    TryNum = 0;
-                                    while (TryNum < 5) {
-                                        try {
-                                            Socket Client_socket = new Socket("192.168.49.1", IP_port_for_IPModify);
-                                            PrintWriter out = new PrintWriter(Client_socket.getOutputStream());
-                                            Log.d("Leaf0419", "Send message: " + message);
-                                            out.println(message);
-                                            out.flush();
-                                            BufferedReader in = new BufferedReader(new InputStreamReader(Client_socket.getInputStream()));
-                                            message = in.readLine();
-                                            Log.d("Leaf0419", "Receive message: " + message);
-                                            String[] s = message.split(":");
-                                            Log.d("Leaf0419", "Split result: " + s[0] + " " + s[1]);
-                                            if (Newcompare(s[0], "YES") == 0) {
-                                                boolean result = setIpWithTfiStaticIp(s[1]);
-                                                Log.d("Leaf0419", "Modify the static IP address: " + result);
-                                            }
-                                            TryNum = 5;
-                                            in.close();
-                                            out.close();
-                                            Client_socket.close();
-                                        } catch (Exception e) {
-                                            e.printStackTrace();
-                                        }
-                                        TryNum++;
-                                    }
-                                    TryNum = 0;
-                                    while (peerCount <= 0 && TryNum < 15) {
-                                        total_time = total_time + (Calendar.getInstance().getTimeInMillis() - start_time) / 1000;
-                                        //s_status = Long.toString((Calendar.getInstance().getTimeInMillis() - start_time ) / 1000) + "s/ " + sleep_time + "s, round: " + NumRound + ", State: acquiring the newest information";
-                                        s_status = "State: acquiring the newest information";
-                                        Log.d("Leaf0419", "State: acquiring the newest information");
-                                        peerCount = ServalDCommand.peerCount();
-                                        Thread.sleep(1000);
-                                        TryNum++;
-                                    }
-                                    STATE = StateFlag.GO_FORMATION.getIndex();
-                                } else {
-                                    STATE = StateFlag.ADD_SERVICE.getIndex();
-                                }
-                            } else {
-                                STATE = StateFlag.ADD_SERVICE.getIndex();
-                                Log.d("Leaf0419", "State: associating GO, mNetworkInfo is null");
-                            }
-                        } else {
-                            STATE = StateFlag.ADD_SERVICE.getIndex();
-                            Log.d("Leaf0419", "State: associating GO, mConnectivityManager is null");
-                        }
-                    } catch (Exception e) {
-                        STATE = StateFlag.ADD_SERVICE.getIndex();
-                        e.printStackTrace();
-                    }
-                }
-           */
             } catch (Exception e) {
                 STATE = StateFlag.ADD_SERVICE.getIndex();
                 e.printStackTrace();
@@ -885,16 +857,13 @@ public class Control extends Service {
                 new WifiP2pManager.DnsSdServiceResponseListener() {
                     @Override
                     public void onDnsSdServiceAvailable(String instanceName,
-                                                        String registrationType, WifiP2pDevice srcDevice) {
-
-                    }
-                }, new WifiP2pManager.DnsSdTxtRecordListener() {
+                                                        String registrationType, WifiP2pDevice srcDevice) { }
+                },
+                new WifiP2pManager.DnsSdTxtRecordListener() {
                     @Override
                     public void onDnsSdTxtRecordAvailable(
                             String fullDomainName, Map<String, String> re_record,
                             WifiP2pDevice device) {
-                        total_time = total_time + (Calendar.getInstance().getTimeInMillis() - start_time) / 1000;
-                        //s_status = Long.toString((Calendar.getInstance().getTimeInMillis() - start_time ) / 1000) + "s/ " + sleep_time + "s, round: " + NumRound + ", State: advertising service, receive frame";
                         s_status = "State: advertising service, receive frame";
                         Log.d("Miga", "State: advertising service, receive frame");
                         record = re_record;
@@ -929,14 +898,14 @@ public class Control extends Service {
         //int peercount = count_peer();
         //peercount=record_set.size();//蒐集到周遭的info,初始值為0
         peercount = discoverpeernum;//於listener接收到時會做更新
-        grouppeer = count_peer();
+        grouppeer = count_peer()+1;//group內的peer數量(包含自己)
         //Log.d("Miga", "startRegistration/discoverpeernum"+discoverpeernum);
         /*try {
             peerCount = ServalDCommand.peerCount();
         } catch (ServalDFailureException e) {
             e.printStackTrace();
         }*/
-        peerCount=grouppeer+1;//Miga 測試看看是不是會出現在app的Enable Services旁邊的字
+        peerCount=grouppeer;//Miga 測試看看是不是會出現在app的Enable Services旁邊的字,20180316測試結果是不會XD
         updatePeerCount(peerCount);
 
         if (Cluster_Name == null) {
@@ -949,7 +918,7 @@ public class Control extends Service {
         record_re.put("MAC", GO_mac);
         //Wang, power level 一定要轉成 string
         record_re.put("POWER", Integer.toString(power_level));
-        record_re.put("GroupPEER",Integer.toString(grouppeer+1));//count_peer(): PeerTable內有幾個peer,+1表示group內有幾個peer
+        record_re.put("GroupPEER",Integer.toString(grouppeer));//count_peer(): PeerTable內有幾個peer,+1表示group內有幾個peer
         // total_time = total_time + (Calendar.getInstance().getTimeInMillis() - start_time) / 1000;
         //s_status = Long.toString((Calendar.getInstance().getTimeInMillis() - start_time ) / 1000) + "s/ " + sleep_time + "s, round: " + NumRound + ", State: advertising service with " + record_re.toString();
         s_status = "State: advertising service with " + record_re.toString();
@@ -993,22 +962,25 @@ public class Control extends Service {
             while (isRunning) {
                 try {
                     Thread.sleep(1000);
+                    sleep_time = sleep_time + 1000;
                     if (Auto) {
                         //開啟discovery serivce的listener,來接收其他device的info
                         if(start_time == 0) {//OnCreate時將start_time=0;
                             start_time = Calendar.getInstance().getTimeInMillis();
                             sleep_time = 0;
                             discoverService();
-                            //peerdiscover();
                         }
                         if ((!IsConnecting)&&STATE == StateFlag.ADD_SERVICE.getIndex()) {
                             s_status = "State: advertising service";
                             Log.d("Miga", "State: advertising service");
                             STATE = StateFlag.WAITING.getIndex();
+                            long service_time = Calendar.getInstance().getTimeInMillis();
                             startRegistration();
+                            sleep_time = sleep_time + Calendar.getInstance().getTimeInMillis() - service_time;
                             // 一定要 sleep 否則無法觸發discovery_service_flag
                             // 造成一直執行 add_service_flag
                             Thread.sleep(2000);
+                            sleep_time = sleep_time + 2000;
                             //sleep_time = sleep_time + 2000;
                             //discoverService();
                         }
@@ -1068,148 +1040,38 @@ public class Control extends Service {
                                     STATE = StateFlag.ADD_SERVICE.getIndex();
                                 }
                             });
-                            NumRound++;
-                            if(InfoChangeTime < 5) {
-                                Thread.sleep(8000);
-                                sleep_time = sleep_time + 8;
-                            }else{
-                                Thread.sleep(10000);
-                                sleep_time = sleep_time + 10;
-                            }
-
-                            STATE = StateFlag.ADD_SERVICE.getIndex();
-                        }//End DISCOVERY_SERVICE
-                       /* Log.d("Leaf0419", "STATE: " + STATE);
-                        if (STATE >= StateFlag.REMOVE_GROUP.getIndex()) continue;
-
-                        // Leaf0616
-
-                        mNetworkInfo = mConnectivityManager.getNetworkInfo(ConnectivityManager.TYPE_WIFI);
-                        if (pre_connect == true && mNetworkInfo.isConnected() == false) {
-                            STATE = StateFlag.DETECTGAW.getIndex();
-                            pre_connect = mNetworkInfo.isConnected();
-                            continue;
-                        }
-                        pre_connect = mNetworkInfo.isConnected();
-                        if (Isconnect == false) {
-                            STATE = StateFlag.GO_FORMATION.getIndex();
-                        }
-
-                        if (STATE == StateFlag.GO_FORMATION.getIndex()) {
-                            total_time = total_time + (Calendar.getInstance().getTimeInMillis() - start_time) / 1000;
-                            //s_status = Long.toString((Calendar.getInstance().getTimeInMillis() - start_time ) / 1000) + "s/ " + sleep_time + "s, round: " + NumRound + ", State: creating GO";
-                            s_status = "State: creating GO";
-                            Log.d("Leaf0419", "State: creating GO");
-                            if (Isconnect == false) {
-                                if (manager != null) {
-                                    STATE = StateFlag.WAITING.getIndex();
-                                    manager.createGroup(channel, new WifiP2pManager.ActionListener() {
-                                        @Override
-                                        public void onSuccess() {
-                                            STATE = StateFlag.ADD_SERVICE.getIndex();
-                                        }
-
-                                        @Override
-                                        public void onFailure(int error) {
-                                            Log.d("Leaf0419", "createGroup onFailure");
-                                            STATE = StateFlag.GO_FORMATION.getIndex();
-                                        }
-                                    });
-                                }
-                            } else {
-                                STATE = StateFlag.ADD_SERVICE.getIndex();
-                            }
-                            continue;
-                        }
-                        if (STATE == StateFlag.ADD_SERVICE.getIndex()) {
-                            total_time = total_time + (Calendar.getInstance().getTimeInMillis() - start_time) / 1000;
-                            //s_status = Long.toString((Calendar.getInstance().getTimeInMillis() - start_time ) / 1000) + "s/ " + sleep_time + "s, round: " + NumRound + ", State: advertising service";
-                            s_status = "State: advertising service";
-                            Log.d("Leaf0419", "State: advertising service");
-                            // startRegistration
-                            manager.requestGroupInfo(channel, new WifiP2pManager.GroupInfoListener() {
+                            //discoverPeers於20180319加入
+                            manager.discoverPeers(channel, new WifiP2pManager.ActionListener() {
                                 @Override
-                                public void onGroupInfoAvailable(WifiP2pGroup group) {
-                                    if (group != null) {
-                                        GOpasswd = group.getPassphrase();
-                                        WiFiApName = group.getNetworkName();
+                                public void onSuccess() {
+                                    Log.d("Wang", "peer discovery success");
+                                }
+                                @Override
+                                public void onFailure(int reasonCode) {
+                                    switch(reasonCode){
+                                        case WifiP2pManager.ERROR:
+                                            Log.d("Wang", "WifiP2pManager.ERROR");
+                                            break;
+
+                                        case WifiP2pManager.P2P_UNSUPPORTED:
+                                            Log.d("Wang", "WifiP2pManager.P2P_UNSUPPORTED:");
+                                            break;
+                                        case WifiP2pManager.BUSY:
+                                            Log.d("Wang", "WifiP2pManager.BUSY:");
+                                            break;
                                     }
                                 }
                             });
-                            Thread.sleep(1000);
-                            STATE = StateFlag.WAITING.getIndex();
-                            startRegistration();
-                            discoverService();
-
+                            STATE = StateFlag.ADD_SERVICE.getIndex();
+                        }//End DISCOVERY_SERVICE
+                        if(InfoChangeTime < 3) {
+                            Thread.sleep(4000);
+                            sleep_time = sleep_time + 4;
+                        }else{
+                            Thread.sleep(10000);
+                            sleep_time = sleep_time + 10;
                         }
-                        if (STATE == StateFlag.DISCOVERY_SERVICE.getIndex()) {
-                            total_time = total_time + (Calendar.getInstance().getTimeInMillis() - start_time) / 1000;
-                            //s_status = Long.toString((Calendar.getInstance().getTimeInMillis() - start_time ) / 1000) + "s/ " + sleep_time + "s, round: " + NumRound + ", State: discovering service";
-                            s_status = "State: discovering service";
-                            Log.d("Leaf0419", "State: discovering service");
-                            manager.stopPeerDiscovery(channel, new WifiP2pManager.ActionListener() {
-                                @Override
-                                public void onSuccess() {
-                                    Log.d("Leaf0419", "State: discovering service, stopPeerDiscovery onSuccess");
-                                    manager.removeServiceRequest(channel, serviceRequest,
-                                            new WifiP2pManager.ActionListener() {
-                                                @Override
-                                                public void onSuccess() {
-                                                    manager.addServiceRequest(channel, serviceRequest,
-                                                            new WifiP2pManager.ActionListener() {
-                                                                @Override
-                                                                public void onSuccess() {
-                                                                    manager.discoverServices(channel,
-                                                                            new WifiP2pManager.ActionListener() {
-                                                                                @Override
-                                                                                public void onSuccess() {
-                                                                                    Log.d("Leaf0419", "State: discovering service, discoverServices onSuccess");
-                                                                                }
-
-                                                                                @Override
-                                                                                public void onFailure(int error) {
-                                                                                    Log.d("Leaf0419", "State: discovering service, discoverServices onFailure " + error);
-                                                                                    manager.discoverPeers(channel, null);
-                                                                                    STATE = StateFlag.DETECTGAW.getIndex();
-                                                                                }
-                                                                            });
-                                                                }
-
-                                                                @Override
-                                                                public void onFailure(int error) {
-                                                                    Log.d("Leaf0419", "State: discovering service, addServiceRequest onFailure ");
-                                                                    STATE = StateFlag.DETECTGAW.getIndex();
-                                                                }
-                                                            });
-                                                }
-
-                                                @Override
-                                                public void onFailure(int reason) {
-                                                    Log.d("Leaf0419", "State: discovering service, removeServiceRequest onFailure");
-                                                    STATE = StateFlag.DETECTGAW.getIndex();
-                                                }
-                                            });
-                                }
-
-                                @Override
-                                public void onFailure(int reasonCode) {
-                                    Log.d("Leaf0419", "State: discovering service, stopPeerDiscovery onFailure");
-                                    STATE = StateFlag.DETECTGAW.getIndex();
-                                }
-                            });
-                            NumRound++;
-                            Thread.sleep(15000);
-                            sleep_time = sleep_time + 15;
-                            if (STATE == StateFlag.DETECTGAW.getIndex()) {
-                                STATE = StateFlag.ADD_SERVICE.getIndex();
-                                wifi.setWifiEnabled(false);
-                                Thread.sleep(500);
-                                wifi.setWifiEnabled(true);
-                                Thread.sleep(1000);
-                            } else if (STATE == StateFlag.DISCOVERY_SERVICE.getIndex()) {
-                                STATE = StateFlag.ADD_SERVICE.getIndex();
-                            }
-                        }*/
+                        NumRound++;
                     }
                 } catch (InterruptedException e) {
                     e.printStackTrace();
@@ -1531,10 +1393,7 @@ public class Control extends Service {
                 receivedp = new DatagramPacket(lMsg, lMsg.length);//接收到的message會存在IMsg
                 receiveds = null;
                 receiveds = new DatagramSocket(IP_port_for_peer_counting);//接收的Socket
-
-                //Miga add multicast 20180313 (接收使用multicast)
-                //buf=new byte[8192];
-
+                pre_peer_count=1;
                 while(true){
                     if(IsP2Pconnect) {
                         if (receivedp != null) {
@@ -1560,8 +1419,15 @@ public class Control extends Service {
                                     // update peer table
                                     if (Newcompare(temp[1], Cluster_Name) == 0) {//相同Cluster_Name
                                         PeerTable.put(temp[0], 10);//填入收到data的SSID(WiFiApName)
-                                        Log.v("Miga", "PeerTable:" + PeerTable);
-                                        s_status = "PeerTable:" + PeerTable;
+                                        if(count_peer()+1 != pre_peer_count) {
+                                            pre_peer_count = count_peer()+1;//更新現在PeerTable內有幾個Peer
+                                            s_status = "peer_count time : " + Double.toString(((Calendar.getInstance().getTimeInMillis() - start_time) / 1000.0))  +" stay_time : " +  Double.toString((sleep_time/1000.0))
+                                                    +  " Round_Num :" + NumRound +" peer count : "  + (count_peer()+1);
+                                            Log.d("Miga","peer_count time : " + Double.toString(((Calendar.getInstance().getTimeInMillis() - start_time) / 1000.0))  +" stay_time : " +  Double.toString((sleep_time/1000.0))
+                                                    +  " Round_Num :" + NumRound +" peer count : "  + (count_peer()+1));
+                                        }
+                                        //Log.v("Miga", "PeerTable:" + PeerTable);
+                                        //s_status = "PeerTable:" + PeerTable;
                                     }
                                     // relay packet
                                     if (Integer.valueOf(temp[2]) > 0) {
@@ -1577,10 +1443,7 @@ public class Control extends Service {
                                             sendds.send(senddp);
                                             //Log.d("Miga", "(Relay)Send the message: " + message + " to " + tempkey);
                                             //s_status = "State : (Relay)Send the message: " + message + " to " + tempkey;
-
                                         }
-
-
                                         sendds.close();
                                     }
                                 }
@@ -1610,64 +1473,6 @@ public class Control extends Service {
                     Log.d("Miga", "Receive_peer_count sendds is close");
                 }
             }
-/*            lMsg = new byte[8192];
-            receivedp = new DatagramPacket(lMsg, lMsg.length);
-            receiveds = null;
-
-            try {
-                receiveds = new DatagramSocket(IP_port_for_peer_counting);
-                while (true) {
-                    //for testing
-                    //ds.setSoTimeout(100000);
-                    receiveds.receive(receivedp);
-                    message = new String(lMsg, 0, receivedp.getLength());
-                    temp = message.split("#");
-                    if (temp[0] != null && temp[1] != null && temp[2] != null && WiFiApName != null) {
-                        // 0: source SSID     1: cluster name    2: TTL
-                        if (Newcompare(temp[0], WiFiApName) != 0) {
-                            // TTL -1
-                            temp[2] = String.valueOf(Integer.valueOf(temp[2]) - 1);
-                            // update peer table
-                            if (Newcompare(temp[1], Cluster_Name) == 0) {
-                                PeerTable.put(temp[0], 5);
-                            }
-                            // relay packet
-                            if (Integer.valueOf(temp[2]) > 0) {
-                                message = temp[0] + "#" + temp[1] + "#" + temp[2];
-                                sendds = null;
-                                sendds = new DatagramSocket();
-                                // broadcast
-                                senddp = new DatagramPacket(message.getBytes(), message.length(), InetAddress.getByName("192.168.49.255"), IP_port_for_peer_counting);
-                                sendds.send(senddp);
-                                Log.d("Leaf0419", "(Relay)Send the message: " + message + " to broadcast");
-                                // unicast
-                                iterator = IPTable.keySet().iterator();
-                                while (iterator.hasNext()) {
-                                    tempkey = iterator.next().toString();
-                                    senddp = new DatagramPacket(message.getBytes(), message.length(), InetAddress.getByName(tempkey), IP_port_for_peer_counting);
-                                    sendds.send(senddp);
-                                    Log.d("Leaf0419", "(Relay)Send the message: " + message + " to " + tempkey);
-                                }
-                                sendds.close();
-                            }
-
-                        }
-                    }
-                }
-            } catch (SocketException e) {
-                e.printStackTrace();
-            } catch (IOException e) {
-                e.printStackTrace();
-            } catch (Exception e){
-                e.printStackTrace();
-            } finally {
-                if (receiveds != null) {
-                    receiveds.close();
-                }
-                if (sendds != null) {
-                    sendds.close();
-                }
-            }*/
         }
     }
 
@@ -1680,7 +1485,7 @@ public class Control extends Service {
             tempkey = iterator.next().toString();
             result++;
         }
-        Log.d("Miga", "The peer count result is : " + result);
+        //Log.d("Miga", "The peer count result is : " + result);
         //By Serval Mesh
         /*try {
             result = ServalDCommand.peerCount();
@@ -1740,8 +1545,8 @@ public class Control extends Service {
                             PeerTable.put(tempkey, PeerTable.get(tempkey) - 1);//一一把PeerTable內對應到的SSID的value-1
                             if (PeerTable.get(tempkey) <= 0) {//value值
                                 PeerTable.remove(tempkey);//將此SSID移除
-                                Log.v("Miga", "remove PeerTable("+tempkey+"):" + PeerTable);
-                                s_status = "remove PeerTable("+tempkey+"):" + PeerTable;
+                                Log.v("Miga", "remove Peer:"+tempkey);
+                                s_status = "remove Peer:"+tempkey;
                             }
                         }
                         //Log.v("Miga", "PeerTable:" + PeerTable);

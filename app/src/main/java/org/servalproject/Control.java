@@ -208,7 +208,7 @@ public class Control extends Service {
     private int pre_peer_count = 0;
 
     public enum RoleFlag {
-        NONE(0), GO(1), CLIENT(2), BRIDGE(3), WIFI_CLIENT(4);//BRIDGE就是之前的RELAY
+        NONE(0), GO(1), CLIENT(2), BRIDGE(3), HYBRID(4);//BRIDGE就是之前的RELAY, HYBRID:一邊是GO一邊是Client的身分
         private int index;
 
         RoleFlag(int idx) {
@@ -1752,9 +1752,11 @@ public class Control extends Service {
                         Cluster_Name = WiFiApName;
                         GO_mac = group.getOwner().deviceAddress.toString();
                         STATE = StateFlag.ADD_SERVICE.getIndex();//1
+                        if(group.getClientList().isEmpty())
+                            ROLE = RoleFlag.NONE.getIndex();
+                        else
+                            ROLE = RoleFlag.GO.getIndex();
 
-                        ROLE = RoleFlag.NONE.getIndex();
-                        Log.d("Miga", "State: Initial Complete , SSID : " + WiFiApName + " Cluster_Name : " + Cluster_Name);
                     }
                 }
             });
@@ -1765,6 +1767,30 @@ public class Control extends Service {
                 e.printStackTrace();
             }
             Log.d("Miga", "Initial group success!");
+            if (mConnectivityManager != null) {
+                mNetworkInfo = mConnectivityManager.getNetworkInfo(ConnectivityManager.TYPE_WIFI);
+                if (mNetworkInfo.isConnected() == true && mNetworkInfo != null) {//wifi interface已連上
+                     if(ROLE == RoleFlag.NONE.getIndex()){
+                         ROLE = RoleFlag.CLIENT.getIndex();
+                         Log.d("Miga", " ROLE:" + ROLE);
+                     }else if(ROLE == RoleFlag.GO.getIndex()){//是GO又是Client
+                         ROLE = RoleFlag.HYBRID.getIndex();
+                         Log.d("Miga", " ROLE:" + ROLE);
+                     }
+                     if(ROLE == RoleFlag.CLIENT.getIndex()){
+                         manager.requestConnectionInfo(channel, new WifiP2pManager.ConnectionInfoListener() {//manager.requestConnectionInfo: Request device connection Info
+                             public void onConnectionInfoAvailable(WifiP2pInfo info) {//onConnectionInfoAvailable: The requested connection info is available
+                                 if (info.groupFormed == true) {// groupFormed: Indicates if a p2p group has been successfully formed
+                                     ROLE = RoleFlag.BRIDGE.getIndex();//wifi interface已連上,且也有p2p group
+                                     Log.d("Miga", " ROLE:" + ROLE);
+                                 }
+                             }
+                         });
+                     }
+                }
+            }
+
+
             //updatePeerCount(peerCount);
             //s_status = "State: Initial Complete : time : " +( (Calendar.getInstance().getTimeInMillis() - initial_start_time)/1000 + " SSID : " + WiFiApName + " Cluster_Name : " + Cluster_Name)+
             //		" ROLE : " + ROLE + " IPTABLE " + IPTable;
@@ -1772,7 +1798,8 @@ public class Control extends Service {
 
             JoinUpdateIPMultiCst();//加入multicast group,為了讓GO來接收連上他的client向他傳送的ip address(ip用來更新IPTable)
             JoinUpdatePeerMultiCst();//加入multicast group,為了讓所有member來更新peer table
-            s_status = "State: Initial Complete : " + " SSID : " + WiFiApName + " Cluster_Name : " + Cluster_Name ;
+            Log.d("Miga", "State: Initial Complete , SSID : " + WiFiApName + " Cluster_Name : " + Cluster_Name + " ROLE:" + ROLE);
+            s_status = "State: Initial Complete : " + " SSID : " + WiFiApName + " Cluster_Name : " + Cluster_Name + " ROLE:" + ROLE;
 
 
         }

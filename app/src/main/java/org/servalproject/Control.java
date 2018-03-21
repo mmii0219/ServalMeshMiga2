@@ -148,6 +148,7 @@ public class Control extends Service {
     private Map<String, Integer> PeerTable = new HashMap<String, Integer>();
     private Socket sc; // for CollectIP_server
     private DatagramSocket receiveds; // for receive_peer_count
+    private DatagramSocket receiveds_cn; // for receive_cluster_name
     private int NumRound;
 
 
@@ -716,6 +717,13 @@ public class Control extends Service {
                                     Isconnect=true;
                                     IsP2Pconnect=true;//p2p已有人連上/被連上,目前主要是用來判斷是否可以開始進行Group內peer的計算
                                     //isCheck = true;//檢查完畢
+                                }else {
+                                    STATE = StateFlag.ADD_SERVICE.getIndex();//如果wifi interface沒有連上表示可能資訊不夠新, 重add_service重新開始
+                                    List<WifiConfiguration> list = wifi.getConfiguredNetworks();
+                                    for (WifiConfiguration i : list) {
+                                        wifi.removeNetwork(i.networkId);//移除所有之前wifi連線網路的設定
+                                        wifi.saveConfiguration();//除存設定
+                                    }
                                 }
                                 IsConnecting=false;
                                 return;
@@ -848,6 +856,12 @@ public class Control extends Service {
                         STATE = StateFlag.ADD_SERVICE.getIndex();
                         Isconnect=true;//p2p已有人連上/被連上,目前主要是用來判斷是否可以開始進行Group內peer的計算
                         IsP2Pconnect=true;
+                    }else {
+                        STATE = StateFlag.ADD_SERVICE.getIndex();//如果wifi interface沒有連上表示可能資訊不夠新, 重add_service重新開始
+                        for (WifiConfiguration i : list) {
+                            wifi.removeNetwork(i.networkId);//移除所有之前wifi連線網路的設定
+                            wifi.saveConfiguration();//除存設定
+                        }
                     }
                     IsConnecting=false;
                     return;
@@ -1594,54 +1608,6 @@ public class Control extends Service {
                     Log.d("Miga", "Send_peer_count sendds is close");
                 }
             }
-            /*try {
-                sendds = null;
-                sendds = new DatagramSocket();
-                while (true) {
-                    try {
-                        if (Isconnect) {
-                            message = WiFiApName + "#" + Cluster_Name + "#" + "5";// 0: source SSID 1: cluster name 2: TTL
-                            // broadcast
-                            dp = new DatagramPacket(message.getBytes(), message.length(), InetAddress.getByName("192.168.49.255"), IP_port_for_peer_counting);
-                            sendds.send(dp);
-                            Log.d("Leaf0419", "(Proactive)Send the message: " + message + " to broadcast");
-                            // unicast
-                            iterator = IPTable.keySet().iterator();
-                            while (iterator.hasNext()) {
-                                tempkey = iterator.next().toString();
-                                dp = new DatagramPacket(message.getBytes(), message.length(), InetAddress.getByName(tempkey), IP_port_for_peer_counting);
-                                sendds.send(dp);
-                                Log.d("Leaf0419", "(Proactive)Send the message: " + message + " to " + tempkey);
-                            }
-
-                            //update peer table
-                            iterator = PeerTable.keySet().iterator();
-                            while (iterator.hasNext()) {
-                                tempkey = iterator.next().toString();
-                                PeerTable.put(tempkey, PeerTable.get(tempkey) - 1);
-                                if (PeerTable.get(tempkey) <= 0) {
-                                    PeerTable.remove(tempkey);
-                                }
-                            }
-                        }
-                    } catch (Exception e) {
-                        e.printStackTrace();
-                    }
-                    Thread.sleep(500);
-                }
-            } catch (SocketException e) {
-                e.printStackTrace();
-            } catch (IOException e) {
-                e.printStackTrace();
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            } catch (Exception e){
-                e.printStackTrace();
-            } finally {
-                if (sendds != null) {
-                    sendds.close();
-                }
-            }*/
         }
     }
 
@@ -1749,8 +1715,8 @@ public class Control extends Service {
             try{
                 lMsg = new byte[8192];
                 receivedp = new DatagramPacket(lMsg, lMsg.length);//接收到的message會存在IMsg
-                receiveds = null;
-                receiveds = new DatagramSocket(IP_port_for_cluster_name);//接收的Socket
+                receiveds_cn = null;
+                receiveds_cn = new DatagramSocket(IP_port_for_cluster_name);//接收的Socket
                 //pre_peer_count=1;
                 while(true){
                     if(IsP2Pconnect) {
@@ -1763,7 +1729,7 @@ public class Control extends Service {
                                 //s_status = "I got message from multicast" + message;
                             } else if (ROLE == RoleFlag.CLIENT.getIndex()) {
                                 //unicast
-                                receiveds.receive(receivedp);//把接收到的data存在receivedp.
+                                receiveds_cn.receive(receivedp);//把接收到的data存在receivedp.
                                 message = new String(lMsg, 0, receivedp.getLength());//將接收到的IMsg轉換成String型態
                                 //Log.d("Miga", "I got message from unicast" + message);
                                 //s_status = "I got message from unicast" + message;
@@ -1781,7 +1747,7 @@ public class Control extends Service {
                             }
                             if(notnull){
                                 if (Newcompare(temp[0], WiFiApName) != 0) {//接收到的不是自己的
-                                    if(!IsInitial){//手動設定的device還沒進CN更新
+                                    if(!IsInitial){//手動設定的device還沒進CN更新,加入這個主要是讓非手動的device近來更新
                                         if (ROLE == RoleFlag.CLIENT.getIndex()) {
                                             if (Integer.valueOf(temp[2]) == RoleFlag.GO.getIndex()) {//接收到的是GO傳來的
                                                 if (!IsReceiveGoInfo) {//且還沒接收過GO的Info
@@ -1809,9 +1775,9 @@ public class Control extends Service {
                 e.printStackTrace();
                 Log.d("Miga", "Receive_Cluster_Name Exception" + e.toString());
             } finally {
-                if (receiveds != null) {
-                    receiveds.close();
-                    Log.d("Miga", "Receive_Cluster_Name receiveds is close");
+                if (receiveds_cn != null) {
+                    receiveds_cn.close();
+                    Log.d("Miga", "Receive_Cluster_Name receiveds_cn is close");
                 }
                 if (sendds != null) {
                     sendds.close();

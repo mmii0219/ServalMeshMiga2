@@ -142,6 +142,7 @@ public class Control extends Service {
     private long start_time, total_time, sleep_time;
     private static int IP_port_for_IPModify = 2555;
     private static int IP_port_for_peer_counting = 2666;
+    private static int IP_port_for_cluster_name = 2777;
     private ServerSocket ss = null;
     private Map<String, Integer> IPTable = new HashMap<String, Integer>();
     private Map<String, Integer> PeerTable = new HashMap<String, Integer>();
@@ -198,6 +199,7 @@ public class Control extends Service {
     private  NetworkInterface p2p0 = null;
     private MulticastSocket recvSocket;//Miga , for ip table
     private MulticastSocket recvPeerSocket;//Miga , for peer table
+    private MulticastSocket recvCNSocket;//Miga , for Cluster Name
     private InetAddress multicgroup;
     //for multicast socket End add by Miga
     private boolean IsConnecting=false;
@@ -206,6 +208,11 @@ public class Control extends Service {
     private boolean IsP2Pconnect = false;//Miga 20180314 連線後不論是GO或是CLIENT都會將這個值設為True, send/receive_peer_count 會使用到
     private int detect_run = 0;//用來讓go的裝置來++執行WiFi_Connect的次數
     private int pre_peer_count = 0;
+    private boolean IsReceiveGoInfo= false;
+    private String Time_Stamp="";
+    private boolean IsInitial=false;
+    private Thread t_Send_Cluster_Name = null;
+    private Thread t_Receive_Cluster_Name = null;
 
     public enum RoleFlag {
         NONE(0), GO(1), CLIENT(2), BRIDGE(3), HYBRID(4);//BRIDGE就是之前的RELAY, HYBRID:一邊是GO一邊是Client的身分
@@ -1367,6 +1374,21 @@ public class Control extends Service {
             Log.d("Miga", "JoinUpdatePeerMultiCst Exception:" + e);
         }
     }
+    //加入更新的Cluster Name multicast, 於Initial()呼叫
+    public void JoinUpdateCNMultiCst(){
+
+        try {
+            //getP2P0();
+
+            recvCNSocket = new MulticastSocket(6791);
+            multicgroup = InetAddress.getByName("224.0.0.3"); //客戶客戶端將自己加入到指定的multicast group中,這樣就能夠收到來自該組的消息
+            recvCNSocket.joinGroup(new InetSocketAddress(multicgroup, 6791), p2p0);//用p2p0 interface來接收muticast pkt
+            Log.d("Miga", "I join CN multicast group success" + multicgroup);
+
+        }catch (Exception e){
+            Log.d("Miga", "JoinUpdatePeerMultiCst Exception:" + e);
+        }
+    }
     // Miga, For multicast ------------End-------------
 
     //20180314 可成功使用multi, uni接收並relay(GO) pkt出去
@@ -1422,9 +1444,9 @@ public class Control extends Service {
                                         if(count_peer()+1 != pre_peer_count) {
                                             pre_peer_count = count_peer()+1;//更新現在PeerTable內有幾個Peer
                                             s_status = "peer_count time : " + Double.toString(((Calendar.getInstance().getTimeInMillis() - start_time) / 1000.0))  +" stay_time : " +  Double.toString((sleep_time/1000.0))
-                                                    +  " Round_Num :" + NumRound +" peer count : "  + (count_peer()+1);
+                                                    +  " Round_Num :" + NumRound +" peer count : "  + (count_peer()+1)+" PeerTable:" + PeerTable;
                                             Log.d("Miga","peer_count time : " + Double.toString(((Calendar.getInstance().getTimeInMillis() - start_time) / 1000.0))  +" stay_time : " +  Double.toString((sleep_time/1000.0))
-                                                    +  " Round_Num :" + NumRound +" peer count : "  + (count_peer()+1));
+                                                    +  " Round_Num :" + NumRound +" peer count : "  + (count_peer()+1)+" PeerTable:" + PeerTable);
                                         }
                                         //Log.v("Miga", "PeerTable:" + PeerTable);
                                         //s_status = "PeerTable:" + PeerTable;
@@ -1623,6 +1645,182 @@ public class Control extends Service {
         }
     }
 
+    public class Send_Cluster_Name extends Thread {
+        private DatagramPacket dp;
+        private DatagramSocket sendds;
+        private Iterator iterator;
+        private String message, tempkey;
+        MulticastSocket multicsk;//Miga20180313
+        DatagramPacket msgPkt;//Miga
+
+        public void run() {
+            try{
+                sendds = null;
+                sendds = new DatagramSocket();
+                while(true) {
+                    if (IsP2Pconnect) {
+                        Time_Stamp="123456";//暫定
+                        message = WiFiApName + "#" + Cluster_Name + "#" + ROLE + "#" + IsReceiveGoInfo + "#"
+                                + Time_Stamp + "#" + "5";
+                        // unicast
+                        iterator = IPTable.keySet().iterator();//IPTable的keySet為許多IP所組成
+                        while (iterator.hasNext()) {
+                            tempkey = iterator.next().toString();
+                            dp = new DatagramPacket(message.getBytes(), message.length(),
+                                    InetAddress.getByName(tempkey), IP_port_for_cluster_name);
+                            sendds.send(dp);//一一傳送給IPTable內的所有IP
+                            Log.v("Miga", "I send unicast message:" + message);
+                            //s_status="I send unicast message:"+message;
+
+                        }
+
+                        /*//multicast
+                        if (mConnectivityManager != null) {
+                            mNetworkInfo = mConnectivityManager.getNetworkInfo(ConnectivityManager.TYPE_WIFI);
+                            if (mNetworkInfo.isConnected()) {
+                                multicgroup = InetAddress.getByName("224.0.0.3");//指定multicast要發送的group
+                                multicsk = new MulticastSocket(6790);//6790: for peertable update
+                                msgPkt = new DatagramPacket(message.getBytes(), message.length(), multicgroup, 6790);
+                                multicsk.send(msgPkt);
+                                //Log.v("Miga", "multicsk send message:" + message);
+                                //s_status = "multicsk send message" + message;
+                            }
+                        }
+                        //下面的update感覺是為了確保peer還在 group內所需,
+                        //因為若peer不在了,則他的值會在每一次執行這個thread時,所對應的value會一直遞減.
+                        //若peer還在group內,則他會藉由再傳送過來的peer資料,將所對應的value更新為10 (receive_peer_count)
+                        // update peer table
+                        iterator = PeerTable.keySet().iterator();
+                        while (iterator.hasNext()) {
+                            tempkey = iterator.next().toString();
+                            PeerTable.put(tempkey, PeerTable.get(tempkey) - 1);//一一把PeerTable內對應到的SSID的value-1
+                            if (PeerTable.get(tempkey) <= 0) {//value值
+                                PeerTable.remove(tempkey);//將此SSID移除
+                                Log.v("Miga", "remove Peer:"+tempkey);
+                                s_status = "remove Peer:"+tempkey;
+                            }
+                        }*/
+                        //Log.v("Miga", "PeerTable:" + PeerTable);
+                        //s_status = "PeerTable:" + PeerTable;
+                    }
+                    Thread.sleep(1000);
+                }
+            } catch (SocketException e) {
+                e.printStackTrace();
+                Log.d("Miga", "Send_Cluster_Name Socket exception" + e.toString());
+            } catch (IOException e) {
+                e.printStackTrace();
+                Log.d("Miga", "Send_Cluster_Name IOException" + e.toString());
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+                Log.d("Miga", "Send_Cluster_Name InterruptedException" + e.toString());
+            } catch (Exception e) {
+                e.printStackTrace();
+                Log.d("Miga", "Send_Cluster_Name other exception" + e.toString());
+            } finally {
+                if (sendds != null) {
+                    sendds.close();
+                    Log.d("Miga", "Send_Cluster_Name sendds is close");
+                }
+            }
+        }
+    }
+    //20180314 可成功使用multi, uni接收並relay(GO) pkt出去
+    public class Receive_Cluster_Name extends Thread {
+        private byte[] lMsg,buf;
+        private DatagramPacket receivedp, senddp;
+        private DatagramSocket sendds;
+        private Iterator iterator;
+        private String message, tempkey;
+        private String[] temp;
+        private MulticastSocket multicsk;//Miga20180312
+
+
+        private String recMessagetemp,recWiFiIpAddr;
+        private String[] recMessage;
+        private int i;
+        private DatagramPacket msgPkt;//Miga
+
+        private boolean notnull;
+        private int m_length = 0;
+
+        public void run() {
+
+            try{
+                lMsg = new byte[8192];
+                receivedp = new DatagramPacket(lMsg, lMsg.length);//接收到的message會存在IMsg
+                receiveds = null;
+                receiveds = new DatagramSocket(IP_port_for_cluster_name);//接收的Socket
+                //pre_peer_count=1;
+                while(true){
+                    if(IsP2Pconnect) {
+                        if (receivedp != null) {
+                            if (ROLE == RoleFlag.GO.getIndex()) {
+                                //multicast
+                                recvCNSocket.receive(receivedp);//recvCNSocket port:6791
+                                message = new String(lMsg, 0, receivedp.getLength());//將接收到的IMsg轉換成String型態
+                                Log.d("Miga", "I got message from multicast" + message);
+                                //s_status = "I got message from multicast" + message;
+                            } else if (ROLE == RoleFlag.CLIENT.getIndex()) {
+                                //unicast
+                                receiveds.receive(receivedp);//把接收到的data存在receivedp.
+                                message = new String(lMsg, 0, receivedp.getLength());//將接收到的IMsg轉換成String型態
+                                //Log.d("Miga", "I got message from unicast" + message);
+                                //s_status = "I got message from unicast" + message;
+                            }
+
+                            temp = message.split("#");//將message之中有#則分開存到tmep陣列裡;message =  WiFiApName + "#" + Cluster_Name + "#" + ROLE + "#" + IsReceiveGoInfo + "#" + Time_Stamp + "#" + "5";
+                            m_length = temp.length;
+                            notnull=  true;
+                            for(int i = 0; i < m_length; i++) {
+                                if(temp[i] != null && !temp[i].isEmpty() && !temp[i].equals("null")) {
+                                }else {
+                                    notnull = false;
+                                    break;
+                                }
+                            }
+                            if(notnull){
+                                if (Newcompare(temp[0], WiFiApName) != 0) {//接收到的不是自己的
+                                    if(!IsInitial){//手動設定的device還沒進CN更新
+                                        if (ROLE == RoleFlag.CLIENT.getIndex()) {
+                                            if (Integer.valueOf(temp[2]) == RoleFlag.GO.getIndex()) {//接收到的是GO傳來的
+                                                if (!IsReceiveGoInfo) {//且還沒接收過GO的Info
+                                                    Cluster_Name = temp[1];
+                                                    IsReceiveGoInfo = true;//已接收過GO的
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                }
+
+
+            }catch (SocketException e) {
+                e.printStackTrace();
+                Log.d("Miga", "Receive_Cluster_Name Socket exception" + e.toString());
+            } catch (IOException e) {
+                e.printStackTrace();
+                Log.d("Miga", "Receive_Cluster_Name IOException" + e.toString());
+            } catch (Exception e) {
+                e.printStackTrace();
+                Log.d("Miga", "Receive_Cluster_Name Exception" + e.toString());
+            } finally {
+                if (receiveds != null) {
+                    receiveds.close();
+                    Log.d("Miga", "Receive_Cluster_Name receiveds is close");
+                }
+                if (sendds != null) {
+                    sendds.close();
+                    Log.d("Miga", "Receive_Cluster_Name sendds is close");
+                }
+            }
+        }
+    }
+
     @Override
     public void onCreate() {
         // Leaf0818
@@ -1727,22 +1925,11 @@ public class Control extends Service {
     //Miga for device initial create
     public class  Initial extends Thread{
         public void run() {
-            manager.createGroup(channel, new WifiP2pManager.ActionListener() {
-                @Override
-                public void onSuccess() {
-                    Log.d("Miga", "initial createGroup Success");
-                    //Isconnect = true;
-                }
-                @Override
-                public void onFailure(int error) {
-                    Log.d("Miga", "initial createGroup onFailure");
-                }
-            });
-            try {
-                Thread.sleep(1000);
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            }
+            JoinUpdateIPMultiCst();//加入multicast group,為了讓GO來接收連上他的client向他傳送的ip address(ip用來更新IPTable)
+            JoinUpdatePeerMultiCst();//加入multicast group,為了讓所有member來更新peer table
+            JoinUpdateCNMultiCst();//加入更新的Cluster Name multicast,為了讓手動建立的role更新CN
+            ROLE = RoleFlag.NONE.getIndex();
+
             manager.requestGroupInfo(channel, new WifiP2pManager.GroupInfoListener() {
                 @Override
                 public void onGroupInfoAvailable(WifiP2pGroup group) {
@@ -1752,21 +1939,21 @@ public class Control extends Service {
                         Cluster_Name = WiFiApName;
                         GO_mac = group.getOwner().deviceAddress.toString();
                         STATE = StateFlag.ADD_SERVICE.getIndex();//1
-                        if(group.getClientList().isEmpty())
-                            ROLE = RoleFlag.NONE.getIndex();
-                        else
+                        if(!group.getClientList().isEmpty()){
                             ROLE = RoleFlag.GO.getIndex();
+                            IsP2Pconnect=true;//p2p已有人連上/被連上,目前主要是用來判斷是否可以開始進行Group內peer的計算
+                        }
 
                     }
                 }
             });
             try {
-                Thread.sleep(1000);
+                Thread.sleep(500);
             } catch (InterruptedException e) {
                 // TODO Auto-generated catch block
                 e.printStackTrace();
             }
-            Log.d("Miga", "Initial group success!");
+
             if (mConnectivityManager != null) {
                 mNetworkInfo = mConnectivityManager.getNetworkInfo(ConnectivityManager.TYPE_WIFI);
                 if (mNetworkInfo.isConnected() == true && mNetworkInfo != null) {//wifi interface已連上
@@ -1782,6 +1969,7 @@ public class Control extends Service {
                              public void onConnectionInfoAvailable(WifiP2pInfo info) {//onConnectionInfoAvailable: The requested connection info is available
                                  if (info.groupFormed == true) {// groupFormed: Indicates if a p2p group has been successfully formed
                                      ROLE = RoleFlag.BRIDGE.getIndex();//wifi interface已連上,且也有p2p group
+                                     IsP2Pconnect=true;//p2p已有人連上/被連上,目前主要是用來判斷是否可以開始進行Group內peer的計算
                                      Log.d("Miga", " ROLE:" + ROLE);
                                  }
                              }
@@ -1789,17 +1977,99 @@ public class Control extends Service {
                      }
                 }
             }
+            try {
+                Thread.sleep(500);
+            } catch (InterruptedException e) {
+                // TODO Auto-generated catch block
+                e.printStackTrace();
+            }
+            manager.requestGroupInfo(channel, new WifiP2pManager.GroupInfoListener() {
+                @Override
+                public void onGroupInfoAvailable(WifiP2pGroup group) {
+                    if (group == null) {
+                        manager.createGroup(channel, new WifiP2pManager.ActionListener() {
+                            @Override
+                            public void onSuccess() {
+                                Log.d("Miga", "initial createGroup Success");
+                                if( ROLE == RoleFlag.CLIENT.getIndex()) {
+                                    IsP2Pconnect = true;
+                                    WiFiIpAddr = wifiIpAddress();//取得wifi IP address
+                                    Log.d("Miga", "Initial/ROLE:" + ROLE + "Cluster_Name:" + Cluster_Name+" wifiIpAddress:"+WiFiIpAddr);
+                                    s_status="state: WiFiIpAddress="+WiFiIpAddr;
+                                    if(!isOpenSWIAThread){//開啟client傳送wifi ip address thread給GO
+                                        if (SendWiFiIpAddr == null) {
+                                            SendWiFiIpAddr = new SendWiFiIpAddr();
+                                            SendWiFiIpAddr.start();
+                                        }
+                                        isOpenSWIAThread=true;
+                                    }
+                                }
+                            }
+                            @Override
+                            public void onFailure(int error) {
+                                Log.d("Miga", "initial createGroup onFailure");
+                            }
+                        });
+                    }
+                }
+            });
 
+            try {
+                Thread.sleep(500);
+            } catch (InterruptedException e) {
+                // TODO Auto-generated catch block
+                e.printStackTrace();
+            }
+
+            //if(ROLE==RoleFlag.GO.getIndex()){
+
+
+            manager.requestGroupInfo(channel, new WifiP2pManager.GroupInfoListener() {
+                @Override
+                public void onGroupInfoAvailable(WifiP2pGroup group) {
+                    if (group != null) {
+                        GOpasswd = group.getPassphrase();
+                        WiFiApName = group.getNetworkName();
+                        Cluster_Name = WiFiApName;
+                        GO_mac = group.getOwner().deviceAddress.toString();
+                        STATE = StateFlag.ADD_SERVICE.getIndex();//1
+                    }
+                }
+            });
+
+            try {
+                Thread.sleep(1000);
+            } catch (InterruptedException e) {
+                // TODO Auto-generated catch block
+                e.printStackTrace();
+            }
+
+            if (t_Send_Cluster_Name == null) {
+                t_Send_Cluster_Name = new Send_Cluster_Name();
+                t_Send_Cluster_Name.start();
+            }
+            if (t_Receive_Cluster_Name == null) {
+                t_Receive_Cluster_Name = new Receive_Cluster_Name();
+                t_Receive_Cluster_Name.start();
+            }
+            //}
+
+            /**/
+            try {
+                Thread.sleep(500);
+            } catch (InterruptedException e) {
+                // TODO Auto-generated catch block
+                e.printStackTrace();
+            }
 
             //updatePeerCount(peerCount);
             //s_status = "State: Initial Complete : time : " +( (Calendar.getInstance().getTimeInMillis() - initial_start_time)/1000 + " SSID : " + WiFiApName + " Cluster_Name : " + Cluster_Name)+
             //		" ROLE : " + ROLE + " IPTABLE " + IPTable;
 
+            IsInitial=true;
 
-            JoinUpdateIPMultiCst();//加入multicast group,為了讓GO來接收連上他的client向他傳送的ip address(ip用來更新IPTable)
-            JoinUpdatePeerMultiCst();//加入multicast group,為了讓所有member來更新peer table
-            Log.d("Miga", "State: Initial Complete , SSID : " + WiFiApName + " Cluster_Name : " + Cluster_Name + " ROLE:" + ROLE);
-            s_status = "State: Initial Complete : " + " SSID : " + WiFiApName + " Cluster_Name : " + Cluster_Name + " ROLE:" + ROLE;
+            Log.d("Miga", "State: Initial Complete , SSID : " + WiFiApName + " Cluster_Name : " + Cluster_Name + " ROLE:" + ROLE + " PeerTable:"+ PeerTable);
+            s_status = "State: Initial Complete : " + " SSID : " + WiFiApName + " Cluster_Name : " + Cluster_Name + " ROLE:" + ROLE+ " PeerTable:"+ PeerTable;
 
 
         }

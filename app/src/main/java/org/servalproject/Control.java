@@ -140,7 +140,7 @@ public class Control extends Service {
     private List<ScanResult> wifi_scan_results;
     public String s_status = "";
     private long start_time, total_time, sleep_time;
-    private static int IP_port_for_IPModify = 2555;
+    private static int IP_port_for_IPSave = 2555;
     private static int IP_port_for_peer_counting = 2666;
     private static int IP_port_for_cluster_name = 2777;
     private ServerSocket ss = null;
@@ -150,6 +150,7 @@ public class Control extends Service {
     private DatagramSocket receiveds; // for receive_peer_count
     private DatagramSocket receiveds_cn; // for receive_cluster_name
     private int NumRound;
+    //private boolean is;
 
 
     public enum StateFlag {
@@ -1165,9 +1166,11 @@ public class Control extends Service {
         //private MulticastSocket clientSocket;//Miga
         private DatagramPacket msgPkt;//Miga
         private boolean isJoin=false;
-        /*private ServerSocket ss = null;
+        private ServerSocket ss = null;
         private Map<String, Integer> IPTable = new HashMap<String, Integer>();
-        private Socket sc; // for CollectIP_server*/
+        private DatagramPacket dgpacket = null;
+        private DatagramSocket dgsocket = null;
+
 
         public void run() {
             try {
@@ -1176,8 +1179,8 @@ public class Control extends Service {
                 //Miga add multicast 20180309 (接收使用multicast)
                 byte[] buf=new byte[256];
                 //回傳使用 unicast
+                dgsocket = new DatagramSocket();
                 // 20180312 目前回傳還沒寫
-                //ss = new ServerSocket(IP_port_for_IPModify);
                 while(true){
                     //sc = ss.accept();//unicast
 
@@ -1194,7 +1197,7 @@ public class Control extends Service {
                                 //Log.d("Miga", "I got multicast message from:" + recMessagetemp);
                                 //s_status = "I got multicast message from:" + recMessagetemp;
                                 if (IPTable.containsKey(recWiFiIpAddr)) {
-                                    //temp = recWiFiIpAddr;
+                                    /*//temp = recWiFiIpAddr;
                                     for (i = 2; i < 254; i++) {
                                         temp = "192.168.49." + String.valueOf(i);
                                         if (IPTable.containsKey(temp) == false) break;
@@ -1204,12 +1207,19 @@ public class Control extends Service {
                                     s_status=" IPTABLE " + IPTable;
                                     Log.d("Miga", "IPTABLE: " + IPTable);
                                     // test end
-                                    //sendbackmessage = "YES:" + temp;
+                                    //sendbackmessage = "YES:" + temp;*/
                                 } else {
                                     IPTable.put(recWiFiIpAddr, 0);
                                     //for test
-                                    s_status=" IPTABLE " + IPTable;
-                                    Log.d("Miga", "IPTable: " + IPTable);
+                                    s_status=" IpTable " + IPTable;
+                                    Log.d("Miga", "IpTable: " + IPTable);
+
+                                    //unicast 回傳到該wifi ip address,及該port
+                                    sendbackmessage = "IpReceive";
+                                    dgpacket = new DatagramPacket(sendbackmessage.getBytes(), sendbackmessage.length(), InetAddress.getByName(recWiFiIpAddr),IP_port_for_IPSave);
+                                    dgsocket.send(dgpacket);
+
+                                    Log.d("Miga", "GO send wifi ip msg to client: "+recWiFiIpAddr+", " + sendbackmessage);
                                     // test end
                                     //sendbackmessage = "NO:X";
                                 }
@@ -1285,6 +1295,10 @@ public class Control extends Service {
                     if (ss != null) {
                         ss.close();
                     }
+                    if (dgsocket != null) {
+                        dgsocket.close();
+                        Log.d("Miga", "CollectIP_server dgsocket is close");
+                    }
                 } catch (IOException e) {
                     e.printStackTrace();
                     Log.d("Miga","CollectIP_Server Exception:"+e);
@@ -1297,11 +1311,18 @@ public class Control extends Service {
     public class SendWiFiIpAddr extends Thread{
         MulticastSocket multicsk;//Miga20180129
         DatagramPacket msgPkt;//Miga
-        String message;
+        String message,recmessage="";
+        private byte[] bcMsg;
+        boolean isSuccessSend=false;
+        DatagramPacket dgpkt;//unicast
+        DatagramSocket dgskt;//unicast
 
         public void run() {
             try {
-                //while(true) {
+                bcMsg = new byte[8192];
+                dgpkt = new DatagramPacket(bcMsg, bcMsg.length);
+                dgskt = new DatagramSocket(IP_port_for_IPSave);
+                while(!isSuccessSend) {//還沒成功接收,則繼續接收GO回傳的msg
                     //Thread.sleep(20000);
                     multicgroup = InetAddress.getByName("224.0.0.3");//指定multicast要發送的group
                     multicsk = new MulticastSocket(6789);
@@ -1311,11 +1332,24 @@ public class Control extends Service {
                     message =  WiFiApName+"#" +WiFiIpAddr;
                     msgPkt = new DatagramPacket(message.getBytes(), message.length(), multicgroup, 6789);
                     multicsk.send(msgPkt);
-                    //Log.v("Miga", "(Proactive)multicsk send message:" + message);
+                    Log.v("Miga", "SendWiFiIpAddr multicsk send message:" + message);
                     //s_status = "(Proactive)multicsk send message" + message;
                     //Thread.sleep(5000);
 
-                //}
+                    if(dgpkt != null){
+                        dgskt.receive(dgpkt);
+                        recmessage = new String(bcMsg, 0 , dgpkt.getLength());
+                        Log.d("Miga","Client get GO's msg:"+recmessage);
+                        if(recmessage=="IpReceive") {
+                            isSuccessSend = true;
+                            Log.d("Miga","Client get GO's msg: IpReceive");
+
+                        }
+                    }
+
+                    Thread.sleep(1000);
+
+                }
             }catch (Exception e){
                 Log.v("Miga", "SendWiFiIpAddr Exception:" + e);
             }
@@ -1359,7 +1393,6 @@ public class Control extends Service {
                 //clientSocket.joinGroup(multicgroup);
                 recvSocket.joinGroup(new InetSocketAddress(multicgroup, 6789), p2p0);//用p2p0 interface來接收muticast pkt
                 Log.d("Miga", "I join iptable multicast group success" + multicgroup);
-                s_status="I join multicast group!!!!!!!!";
                 isJoin = true;//已加入multicast group
                 //開啟接收multicast的thread
                 if (t_collectIP == null) {
@@ -1636,7 +1669,7 @@ public class Control extends Service {
                                     InetAddress.getByName(tempkey), IP_port_for_cluster_name);
                             sendds.send(dp);//一一傳送給IPTable內的所有IP
                             Log.v("Miga", "I send unicast message:" + message);
-                            //s_status="I send unicast message:"+message;
+                            s_status="I send unicast message:"+message;
 
                         }
 
@@ -1731,8 +1764,8 @@ public class Control extends Service {
                                 //unicast
                                 receiveds_cn.receive(receivedp);//把接收到的data存在receivedp.
                                 message = new String(lMsg, 0, receivedp.getLength());//將接收到的IMsg轉換成String型態
-                                //Log.d("Miga", "I got message from unicast" + message);
-                                //s_status = "I got message from unicast" + message;
+                                Log.d("Miga", "I got message from unicast" + message);
+                                s_status = "I got message from unicast" + message;
                             }
 
                             temp = message.split("#");//將message之中有#則分開存到tmep陣列裡;message =  WiFiApName + "#" + Cluster_Name + "#" + ROLE + "#" + IsReceiveGoInfo + "#" + Time_Stamp + "#" + "5";
@@ -1987,8 +2020,6 @@ public class Control extends Service {
                 e.printStackTrace();
             }
 
-            //if(ROLE==RoleFlag.GO.getIndex()){
-
 
             manager.requestGroupInfo(channel, new WifiP2pManager.GroupInfoListener() {
                 @Override
@@ -2018,9 +2049,7 @@ public class Control extends Service {
                 t_Receive_Cluster_Name = new Receive_Cluster_Name();
                 t_Receive_Cluster_Name.start();
             }
-            //}
 
-            /**/
             try {
                 Thread.sleep(500);
             } catch (InterruptedException e) {
@@ -2033,6 +2062,21 @@ public class Control extends Service {
             //		" ROLE : " + ROLE + " IPTABLE " + IPTable;
 
             IsInitial=true;
+
+
+            /*if(ROLE==RoleFlag.GO.getIndex()){
+                manager.requestGroupInfo(channel, new WifiP2pManager.GroupInfoListener() {
+                    @Override
+                    public void onGroupInfoAvailable(WifiP2pGroup group) {
+                        if (group != null) {
+                            //for(int i=1;i<group.getClientList().size();i++){
+                                Log.d("Miga","ClinetList:"+group.getClientList().toString());
+                            //}
+                            //group.getClientList().;
+                        }
+                    }
+                });
+            }*/
 
             Log.d("Miga", "State: Initial Complete , SSID : " + WiFiApName + " Cluster_Name : " + Cluster_Name + " ROLE:" + ROLE + " PeerTable:"+ PeerTable);
             s_status = "State: Initial Complete : " + " SSID : " + WiFiApName + " Cluster_Name : " + Cluster_Name + " ROLE:" + ROLE+ " PeerTable:"+ PeerTable;

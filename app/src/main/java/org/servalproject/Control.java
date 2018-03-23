@@ -1157,6 +1157,7 @@ public class Control extends Service {
 
     // Miga edit 20180314 主要是讓GO來接收client傳送過來的wifi ip address
     // 並將ip儲存於IP Table
+    // 20180323 目前GO已可使用unicast來回傳給Client, 若GO有成功收到ip則回傳IpReceive;若沒有則沒辦法回傳
     public class CollectIP_server extends Thread {
 
         private PrintWriter out;
@@ -1179,9 +1180,7 @@ public class Control extends Service {
                 byte[] buf=new byte[256];
                 //回傳使用 unicast
                 dgsocket = new DatagramSocket();
-                // 20180312 目前回傳還沒寫
                 while(true){
-                    //sc = ss.accept();//unicast
 
                     //讀取數據
                     msgPkt=new DatagramPacket(buf, buf.length);
@@ -1219,16 +1218,8 @@ public class Control extends Service {
                                     dgsocket.send(dgpacket);
 
                                     Log.d("Miga", "GO send wifi ip msg to client: "+recWiFiIpAddr+", " + sendbackmessage);
-                                    // test end
-                                    //sendbackmessage = "NO:X";
+
                                 }
-                                //回傳訊息給client(使用unicast)
-                                /*out = new PrintWriter(sc.getOutputStream());
-                                out.println(sendbackmessage);
-                                Log.d("Miga", "Send back the message: " + sendbackmessage);
-                                out.flush();
-                                out.close();
-                                sc.close();*/
                             }
                         }
                     }
@@ -1267,7 +1258,7 @@ public class Control extends Service {
         }
     }
 
-
+    // 20180323 將此thread改為迴圈, 若GO都還沒收到ip的話, 會持續傳送ip, 直到接收到IP
     public class SendWiFiIpAddr extends Thread{
         MulticastSocket multicsk;//Miga20180129
         DatagramPacket msgPkt;//Miga
@@ -1632,35 +1623,6 @@ public class Control extends Service {
                             s_status="I send unicast message:"+message;
 
                         }
-
-                        /*//multicast
-                        if (mConnectivityManager != null) {
-                            mNetworkInfo = mConnectivityManager.getNetworkInfo(ConnectivityManager.TYPE_WIFI);
-                            if (mNetworkInfo.isConnected()) {
-                                multicgroup = InetAddress.getByName("224.0.0.3");//指定multicast要發送的group
-                                multicsk = new MulticastSocket(6790);//6790: for peertable update
-                                msgPkt = new DatagramPacket(message.getBytes(), message.length(), multicgroup, 6790);
-                                multicsk.send(msgPkt);
-                                //Log.v("Miga", "multicsk send message:" + message);
-                                //s_status = "multicsk send message" + message;
-                            }
-                        }
-                        //下面的update感覺是為了確保peer還在 group內所需,
-                        //因為若peer不在了,則他的值會在每一次執行這個thread時,所對應的value會一直遞減.
-                        //若peer還在group內,則他會藉由再傳送過來的peer資料,將所對應的value更新為10 (receive_peer_count)
-                        // update peer table
-                        iterator = PeerTable.keySet().iterator();
-                        while (iterator.hasNext()) {
-                            tempkey = iterator.next().toString();
-                            PeerTable.put(tempkey, PeerTable.get(tempkey) - 1);//一一把PeerTable內對應到的SSID的value-1
-                            if (PeerTable.get(tempkey) <= 0) {//value值
-                                PeerTable.remove(tempkey);//將此SSID移除
-                                Log.v("Miga", "remove Peer:"+tempkey);
-                                s_status = "remove Peer:"+tempkey;
-                            }
-                        }*/
-                        //Log.v("Miga", "PeerTable:" + PeerTable);
-                        //s_status = "PeerTable:" + PeerTable;
                     }
                     Thread.sleep(1000);
                 }

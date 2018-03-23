@@ -331,6 +331,41 @@ public class Control extends Service {
         }
     }
 
+    public class Step2Data_set_Comparator implements Comparator {//Step 2.用來multi-group
+
+        public int compare(Object obj1, Object obj2) {
+            Step1Data_set data1 = (Step1Data_set) obj1;
+            Step1Data_set data2 = (Step1Data_set) obj2;
+
+            if (data1.getGroupPEER().compareTo(data2.getGroupPEER()) < 0) {
+                return 1;
+            } else if (data1.getGroupPEER().compareTo(data2.getGroupPEER()) > 0) {
+                return -1;
+            }
+
+            /*if (data1.getPOWER().equals("100")) {
+                return 1;
+            } else if(data2.getPOWER().equals("100")) {
+                return -1;
+            }else if (data1.getPOWER().compareTo(data2.getPOWER()) < 0) {
+                return -1;
+            } else if (data1.getPOWER().compareTo(data2.getPOWER()) > 0) {
+                return 1;
+            }
+*/
+
+
+            if (data1.getSSID().compareTo(data2.getSSID()) < 0) {
+                return 1;
+            } else if (data1.getSSID().compareTo(data2.getSSID()) > 0) {
+                return -1;
+            }
+
+            return 0;
+
+        }
+    }
+
 
     // </aqua0722>
     public void onNetworkStateChanged() {
@@ -556,7 +591,7 @@ public class Control extends Service {
                 Log.d("Miga", "WiFi_Connect/Collect data and record size : " + record_set+record_set.size());
                 s_status="state: WiFi_Connect/Receive record size:"+record_set.size();
 
-                if(InfoChangeTime < 3) {//交換次數少於5次
+                if(InfoChangeTime < 3) {//交換次數少於3次
                     STATE = StateFlag.ADD_SERVICE.getIndex();//再去重新加入資料並交換
                     return;
                 }
@@ -569,7 +604,7 @@ public class Control extends Service {
                     return;
                 }
                 //Log.d("Miga", "WiFi_Connect/ROLE:"+ROLE);
-                if(ROLE == RoleFlag.NONE.getIndex() || ROLE == RoleFlag.GO.getIndex()) {
+                //if(ROLE == RoleFlag.NONE.getIndex() || ROLE == RoleFlag.GO.getIndex()) { 20180323暫時拿掉看看看
                     Collect_record.clear();
                     for (Object set_key : record_set.keySet()) {
                         record = record_set.get(set_key);
@@ -620,7 +655,7 @@ public class Control extends Service {
                     Name = Collect_record.get(0).getName();
                     PEER = Collect_record.get(0).getPEER();
                     MAC = Collect_record.get(0).getMAC();
-                }
+                //}
 
                 if(ROLE == RoleFlag.NONE.getIndex()) {//還沒檢查並連線過,則進行判斷
                     if (mConnectivityManager != null) {
@@ -1087,11 +1122,15 @@ public class Control extends Service {
                             STATE = StateFlag.ADD_SERVICE.getIndex();
                         }//End DISCOVERY_SERVICE
                         if(InfoChangeTime < 3) {
-                            Thread.sleep(4000);
-                            sleep_time = sleep_time + 4;
+                            int randomnum = randomWithRange(4,7)*1000;
+                            Thread.sleep(randomnum);
+                            //Log.d("Miga","Thread sleep:"+randomnum);
+                            sleep_time = sleep_time + randomnum;
                         }else{
-                            Thread.sleep(10000);
-                            sleep_time = sleep_time + 10;
+                            int randomnum = randomWithRange(7,10)*1000;
+                            Thread.sleep(randomnum);
+                            //Log.d("Miga","Thread sleep:"+randomnum);
+                            sleep_time = sleep_time + randomnum;
                         }
                         NumRound++;
                     }
@@ -1131,6 +1170,11 @@ public class Control extends Service {
                 }
             }
         }
+    }
+
+    public int randomWithRange(int min, int max) {
+        int range = (max - min) + 1;
+        return (int)(Math.random() * range) + min;
     }
 
     private String wifiIpAddress() {

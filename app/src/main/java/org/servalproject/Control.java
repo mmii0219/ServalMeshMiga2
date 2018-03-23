@@ -1619,8 +1619,8 @@ public class Control extends Service {
                             dp = new DatagramPacket(message.getBytes(), message.length(),
                                     InetAddress.getByName(tempkey), IP_port_for_cluster_name);
                             sendds.send(dp);//一一傳送給IPTable內的所有IP
-                            Log.v("Miga", "I send unicast message:" + message);
-                            s_status="I send unicast message:"+message;
+                            //Log.v("Miga", "I send unicast message:" + message);
+                            //s_status="I send unicast message:"+message;
 
                         }
                     }

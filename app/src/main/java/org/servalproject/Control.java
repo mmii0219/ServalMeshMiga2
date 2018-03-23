@@ -1167,7 +1167,6 @@ public class Control extends Service {
         private DatagramPacket msgPkt;//Miga
         private boolean isJoin=false;
         private ServerSocket ss = null;
-        //private Map<String, Integer> IPTable = new HashMap<String, Integer>();
         private DatagramPacket dgpacket = null;
         private DatagramSocket dgsocket = null;
 
@@ -1235,45 +1234,6 @@ public class Control extends Service {
                     }
 
                 }
-                //ss = new ServerSocket(IP_port_for_IPModify);
-                /*while (true) {
-
-                    sc = ss.accept();
-                    in = new BufferedReader(new InputStreamReader(sc.getInputStream()));
-                    recMessagetemp = in.readLine();
-                    recMessage = recMessagetemp.split("#");//[0]: WifiIP , [1]:WiFiApName(SSID)
-                    WiFiIpAddr=recMessage[0];
-                    if(!(recMessage[1].equals(WiFiApName))) {//接收到的不是自己,則可以進行IP判斷
-                        Log.d("Miga", "Receive IP: " + WiFiIpAddr);
-                        if (IPTable.containsKey(WiFiIpAddr)) {
-                            //temp = WiFiIpAddr;
-                            for (i = 2; i < 254; i++) {
-                                temp = "192.168.49." + String.valueOf(i);
-                                if (IPTable.containsKey(temp) == false) break;
-                            }
-                            IPTable.put(temp, 0);
-                            //for test
-                            s_status=" IPTABLE " + IPTable;
-                            Log.d("Miga", "IPTABLE: " + IPTable);
-                            // test end
-                            message = "YES:" + temp;
-                        } else {
-                            IPTable.put(WiFiIpAddr, 0);
-                            //for test
-                            s_status=" IPTABLE " + IPTable;
-                            Log.d("Miga", "IPTable: " + IPTable);
-                            // test end
-                            message = "NO:X";
-                        }
-                        out = new PrintWriter(sc.getOutputStream());
-                        out.println(message);
-                        Log.d("Miga", "Send the message: " + message);
-                        out.flush();
-                        out.close();
-                        in.close();
-                        sc.close();
-                    }
-                }*/
             } catch (SocketException e) {
                 e.printStackTrace();
                 Log.d("Miga", "CollectIP_server Socket exception" + e.toString());

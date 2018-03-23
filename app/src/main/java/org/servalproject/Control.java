@@ -1167,7 +1167,7 @@ public class Control extends Service {
         private DatagramPacket msgPkt;//Miga
         private boolean isJoin=false;
         private ServerSocket ss = null;
-        private Map<String, Integer> IPTable = new HashMap<String, Integer>();
+        //private Map<String, Integer> IPTable = new HashMap<String, Integer>();
         private DatagramPacket dgpacket = null;
         private DatagramSocket dgsocket = null;
 
@@ -1764,8 +1764,8 @@ public class Control extends Service {
                                 //unicast
                                 receiveds_cn.receive(receivedp);//把接收到的data存在receivedp.
                                 message = new String(lMsg, 0, receivedp.getLength());//將接收到的IMsg轉換成String型態
-                                Log.d("Miga", "I got message from unicast" + message);
-                                s_status = "I got message from unicast" + message;
+                                //Log.d("Miga", "I got message from unicast" + message);
+                                //s_status = "I got message from unicast" + message;
                             }
 
                             temp = message.split("#");//將message之中有#則分開存到tmep陣列裡;message =  WiFiApName + "#" + Cluster_Name + "#" + ROLE + "#" + IsReceiveGoInfo + "#" + Time_Stamp + "#" + "5";

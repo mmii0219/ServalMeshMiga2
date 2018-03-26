@@ -216,6 +216,14 @@ public class Control extends Service {
     private Thread t_Send_Cluster_Name = null;
     private Thread t_Receive_Cluster_Name = null;
 
+    //For receive_peer_count
+    private byte[] lMsg_pc;
+    private DatagramPacket receivedpkt_pc;
+    private DatagramSocket receivedskt_pc;//unicast
+    private String RecvMsg_pc="";
+    private Thread t_Receive_peer_count_multi = null;
+    private Thread t_Receive_peer_count_uni = null;
+
     public enum RoleFlag {
         NONE(0), GO(1), CLIENT(2), BRIDGE(3), HYBRID(4);//BRIDGE就是之前的RELAY, HYBRID:一邊是GO一邊是Client的身分
         private int index;
@@ -604,7 +612,8 @@ public class Control extends Service {
                     return;
                 }
                 //Log.d("Miga", "WiFi_Connect/ROLE:"+ROLE);
-                //if(ROLE == RoleFlag.NONE.getIndex() || ROLE == RoleFlag.GO.getIndex()) { 20180323暫時拿掉看看看
+                //20180323/26 暫時先註解看看下面的code可不可行  Start
+                /*if(ROLE == RoleFlag.NONE.getIndex() || ROLE == RoleFlag.GO.getIndex()) {
                     Collect_record.clear();
                     for (Object set_key : record_set.keySet()) {
                         record = record_set.get(set_key);
@@ -632,6 +641,7 @@ public class Control extends Service {
                     if (!Collect_record.contains(self)) {
                         Collect_record.add(self);
                     }
+
                     //Collect_record進行排序來選出Group來加入
                     Collections.sort(Collect_record, new Comparator<Step1Data_set>() {
                         public int compare(Step1Data_set o1, Step1Data_set o2) {
@@ -655,7 +665,66 @@ public class Control extends Service {
                     Name = Collect_record.get(0).getName();
                     PEER = Collect_record.get(0).getPEER();
                     MAC = Collect_record.get(0).getMAC();
-                //}
+                }*/
+                //20180323/26 暫時先註解看看下面的code可不可行  End
+
+                //20180323/26 新加入 Start
+                Collect_record.clear();
+                for (Object set_key : record_set.keySet()) {
+                    record = record_set.get(set_key);
+                    SSID = record.get("SSID").toString();
+                    key = record.get("PWD").toString();
+                    Name = record.get("Name").toString();//Cluster_Name
+                    PEER = record.get("PEER").toString();//可以發現到周圍的peer數,不表示為group內的device數量
+                    MAC = record.get("MAC").toString();
+                    POWER = record.get("POWER").toString();
+                    GroupPEER = record.get("GroupPEER").toString();//Group內的device數量
+                    //GO = record.get("GO").toString();
+                    //Log.d("Miga", "WiFi_Connect/Insert data");
+
+                    if (!Name.equals(Cluster_Name)) {//只儲存不同Cluster的device資料
+                        Step1Data_set data = new Step1Data_set(SSID, key, Name, PEER, MAC, POWER, GroupPEER);
+                        if (!Collect_record.contains(data)) {
+                            Collect_record.add(data);
+                        }
+                    }
+                }
+                //也加入自己的data
+                Step1Data_set self = new Step1Data_set(WiFiApName, GOpasswd, Cluster_Name,
+                        String.valueOf(peercount), GO_mac, String.valueOf(power_level), String.valueOf(grouppeer));
+
+                if (!Collect_record.contains(self)) {
+                    Collect_record.add(self);
+                }
+
+                if(ROLE == RoleFlag.NONE.getIndex() || ROLE == RoleFlag.GO.getIndex()) {//20180326 只有NONE和GO需去做Step1的排序, GO是為了避免被孤立因此需去做排序, NONE則是為了一開始去組intra group
+                    //Collect_record進行排序來選出Group來加入
+                    Collections.sort(Collect_record, new Comparator<Step1Data_set>() {
+                        public int compare(Step1Data_set o1, Step1Data_set o2) {
+                            return o1.compareTo(o2);
+                        }
+                    });
+                    //取出排序第一個的
+                    SSID = Collect_record.get(0).getSSID();
+                    key = Collect_record.get(0).getkey();
+                    Name = Collect_record.get(0).getName();
+                    PEER = Collect_record.get(0).getPEER();
+                    MAC = Collect_record.get(0).getMAC();
+                }
+                //目的應該只是要print出有收集到哪些data
+                int obj_num = 0;
+                String Collect_contain = "";
+                Step1Data_set tmp;
+                for (int i = 0; i < Collect_record.size(); i++) {
+                    tmp = (Step1Data_set) Collect_record.get(i);
+                    Collect_contain = Collect_contain + obj_num + " : " + tmp.toString() + " ";
+                    obj_num++;
+                }
+                Log.d("Miga", "WiFi_Connect/Collect records contain " + Collect_contain);
+
+
+                //20180323/26 新加入 End
+
 
                 if(ROLE == RoleFlag.NONE.getIndex()) {//還沒檢查並連線過,則進行判斷
                     if (mConnectivityManager != null) {
@@ -774,7 +843,7 @@ public class Control extends Service {
                         detect_run = 0;
                         STATE = StateFlag.ADD_SERVICE.getIndex();
                         return;
-                    }else if(detect_run < 5){//若peerCount=1,且detect_run<5(給GO 5次機會去看看Group內會不會將來有device連上他)
+                    }else if(detect_run < 3){//若peerCount=1,且detect_run<5(給GO 5次機會去看看Group內會不會將來有device連上他)
                         detect_run++;
                         STATE = StateFlag.ADD_SERVICE.getIndex();
                         return;
@@ -878,7 +947,7 @@ public class Control extends Service {
                         Cluster_Name = Name;//將自己的Cluster_Name更新為新的GO的Cluster_Name //Miga 20180118 將自己的clusterName更新了
                         ROLE = RoleFlag.CLIENT.getIndex();//變為CLIENT
                         WiFiIpAddr = wifiIpAddress();//取得wifi IP address
-                        Log.d("Miga", "WiFi_Connect/ROLE:" + ROLE + "Cluster_Name:" + Cluster_Name+" wifiIpAddress:"+WiFiIpAddr);
+                        Log.d("Miga", "WiFi_Connect/ROLE:" + ROLE + " Cluster_Name:" + Cluster_Name+" wifiIpAddress:"+WiFiIpAddr);
                         s_status="state: WiFiIpAddress="+WiFiIpAddr;
                         if(!isOpenSWIAThread){//開啟client傳送wifi ip address thread給GO
                             if (SendWiFiIpAddr == null) {
@@ -1453,71 +1522,61 @@ public class Control extends Service {
         public void run() {
 
             try{
-                lMsg = new byte[8192];
-                receivedp = new DatagramPacket(lMsg, lMsg.length);//接收到的message會存在IMsg
-                receiveds = null;
-                receiveds = new DatagramSocket(IP_port_for_peer_counting);//接收的Socket
-                pre_peer_count=1;
-                while(true){
-                    if(IsP2Pconnect) {
-                        if (receivedp != null) {
-                            if (ROLE == RoleFlag.GO.getIndex()) {
-                                //multicast
-                                recvPeerSocket.receive(receivedp);//recvPeerSocket_ port:6790
-                                message = new String(lMsg, 0, receivedp.getLength());//將接收到的IMsg轉換成String型態
-                                //Log.d("Miga", "I got message from multicast" + message);
-                                //s_status = "I got message from multicast" + message;
-                            } else if (ROLE == RoleFlag.CLIENT.getIndex()) {
-                                //unicast
-                                receiveds.receive(receivedp);//把接收到的data存在receivedp.
-                                message = new String(lMsg, 0, receivedp.getLength());//將接收到的IMsg轉換成String型態
-                                //Log.d("Miga", "I got message from unicast" + message);
-                                //s_status = "I got message from unicast" + message;
-                            }
+                //20180326將multicast和unicast的socket分成兩個thread來寫，小的thread所接收的data會用global來儲存，再由此thread來處理資料。
+                lMsg_pc = new byte[8192];
+                receivedpkt_pc = new DatagramPacket(lMsg_pc, lMsg_pc.length);//接收到的message會存在IMsg
+                receivedskt_pc = new DatagramSocket(IP_port_for_peer_counting);
+                if (t_Receive_peer_count_uni == null) {
+                    t_Receive_peer_count_uni = new Receive_peer_count_unicastsocket();
+                    t_Receive_peer_count_uni.start();
+                }
 
-                            temp = message.split("#");//將message之中有#則分開存到tmep陣列裡;message = WiFiApName + "#" + Cluster_Name + "#" + "5";
-                            if (temp[0] != null && temp[1] != null && temp[2] != null && WiFiApName != null) {
-                                if (Newcompare(temp[0], WiFiApName) != 0) {//接收到的data和此裝置的SSID不同; 若A>B則reutrn 1
-                                    // TTL -1
-                                    temp[2] = String.valueOf(Integer.valueOf(temp[2]) - 1);//經過一個router因此-1
-                                    // update peer table
-                                    if (Newcompare(temp[1], Cluster_Name) == 0) {//相同Cluster_Name
-                                        PeerTable.put(temp[0], 10);//填入收到data的SSID(WiFiApName)
-                                        if(count_peer()+1 != pre_peer_count) {
-                                            pre_peer_count = count_peer()+1;//更新現在PeerTable內有幾個Peer
-                                            s_status = "peer_count time : " + Double.toString(((Calendar.getInstance().getTimeInMillis() - start_time) / 1000.0))  +" stay_time : " +  Double.toString((sleep_time/1000.0))
-                                                    +  " Round_Num :" + NumRound +" peer count : "  + (count_peer()+1)+" PeerTable:" + PeerTable;
-                                            Log.d("Miga","peer_count time : " + Double.toString(((Calendar.getInstance().getTimeInMillis() - start_time) / 1000.0))  +" stay_time : " +  Double.toString((sleep_time/1000.0))
-                                                    +  " Round_Num :" + NumRound +" peer count : "  + (count_peer()+1)+" PeerTable:" + PeerTable);
-                                        }
-                                        //Log.v("Miga", "PeerTable:" + PeerTable);
-                                        //s_status = "PeerTable:" + PeerTable;
+                if (t_Receive_peer_count_multi == null) {
+                    t_Receive_peer_count_multi = new Receive_peer_count_multicastsocket();
+                    t_Receive_peer_count_multi.start();
+                }
+
+                while(true){
+                    if(RecvMsg_pc!="") {
+                        temp = RecvMsg_pc.split("#");//將message之中有#則分開存到tmep陣列裡;message = WiFiApName + "#" + Cluster_Name + "#" + "5";
+                        if (temp[0] != null && temp[1] != null && temp[2] != null && WiFiApName != null) {
+                            if (Newcompare(temp[0], WiFiApName) != 0) {//接收到的data和此裝置的SSID不同; 若A>B則reutrn 1
+                                // TTL -1
+                                temp[2] = String.valueOf(Integer.valueOf(temp[2]) - 1);//經過一個router因此-1
+                                // update peer table
+                                if (Newcompare(temp[1], Cluster_Name) == 0) {//相同Cluster_Name
+                                    PeerTable.put(temp[0], 10);//填入收到data的SSID(WiFiApName)
+                                    if (count_peer() + 1 != pre_peer_count) {
+                                        pre_peer_count = count_peer() + 1;//更新現在PeerTable內有幾個Peer
+                                        s_status = "peer_count time : " + Double.toString(((Calendar.getInstance().getTimeInMillis() - start_time) / 1000.0)) + " stay_time : " + Double.toString((sleep_time / 1000.0))
+                                                + " Round_Num :" + NumRound + " peer count : " + (count_peer() + 1) + " PeerTable:" + PeerTable;
+                                        Log.d("Miga", "peer_count time : " + Double.toString(((Calendar.getInstance().getTimeInMillis() - start_time) / 1000.0)) + " stay_time : " + Double.toString((sleep_time / 1000.0))
+                                                + " Round_Num :" + NumRound + " peer count : " + (count_peer() + 1) + " PeerTable:" + PeerTable);
                                     }
-                                    // relay packet
-                                    if (Integer.valueOf(temp[2]) > 0) {
-                                        message = temp[0] + "#" + temp[1] + "#" + temp[2];
-                                        sendds = null;
-                                        sendds = new DatagramSocket();
-                                        // unicast
-                                        iterator = IPTable.keySet().iterator();
-                                        while (iterator.hasNext()) {
-                                            tempkey = iterator.next().toString();
-                                            senddp = new DatagramPacket(message.getBytes(), message.length(),
-                                                    InetAddress.getByName(tempkey), IP_port_for_peer_counting);
-                                            sendds.send(senddp);
-                                            //Log.d("Miga", "(Relay)Send the message: " + message + " to " + tempkey);
-                                            //s_status = "State : (Relay)Send the message: " + message + " to " + tempkey;
-                                        }
-                                        sendds.close();
+                                    //Log.v("Miga", "PeerTable:" + PeerTable);
+                                    //s_status = "PeerTable:" + PeerTable;
+                                }
+                                // relay packet
+                                if (Integer.valueOf(temp[2]) > 0) {
+                                    message = temp[0] + "#" + temp[1] + "#" + temp[2];
+                                    sendds = null;
+                                    sendds = new DatagramSocket();
+                                    // unicast
+                                    iterator = IPTable.keySet().iterator();
+                                    while (iterator.hasNext()) {
+                                        tempkey = iterator.next().toString();
+                                        senddp = new DatagramPacket(message.getBytes(), message.length(),
+                                                InetAddress.getByName(tempkey), IP_port_for_peer_counting);
+                                        sendds.send(senddp);
+                                        //Log.d("Miga", "(Relay)Send the message: " + message + " to " + tempkey);
+                                        //s_status = "State : (Relay)Send the message: " + message + " to " + tempkey;
                                     }
+                                    sendds.close();
                                 }
                             }
                         }
                     }
-
                 }
-
-
             }catch (SocketException e) {
                 e.printStackTrace();
                 Log.d("Miga", "Receive_peer_count Socket exception" + e.toString());
@@ -1536,6 +1595,56 @@ public class Control extends Service {
                     sendds.close();
                     Log.d("Miga", "Receive_peer_count sendds is close");
                 }
+                if (recvPeerSocket != null) {
+                    recvPeerSocket.close();
+                    Log.d("Miga", "Receive_peer_count recvPeerSocket is close");
+                }
+            }
+        }
+    }
+
+    public class Receive_peer_count_unicastsocket extends Thread{
+        public void run() {
+            try {
+                while(true) {
+                    if (IsP2Pconnect) {
+                        if (receivedpkt_pc != null) {
+                            if (ROLE == RoleFlag.CLIENT.getIndex()) {
+                                //unicast
+                                receivedskt_pc.receive(receivedpkt_pc);//把接收到的data存在receivedp.
+                                RecvMsg_pc = new String(lMsg_pc, 0, receivedpkt_pc.getLength());//將接收到的IMsg轉換成String型態
+                                //Log.d("Miga", "I got message from unicast" + message);
+                                //s_status = "I got message from unicast" + message;
+                            }
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+                Log.d("Miga", "Receive_peer_count_unicastsocket Exception" + e.toString());
+            }
+        }
+    }
+
+    public class Receive_peer_count_multicastsocket extends Thread{
+        public void run() {
+            try {
+                while(true) {
+                    if (IsP2Pconnect) {
+                        if (receivedpkt_pc != null) {
+                            if (ROLE == RoleFlag.GO.getIndex()) {
+                                //multicast
+                                recvPeerSocket.receive(receivedpkt_pc);//recvPeerSocket_ port:6790
+                                RecvMsg_pc = new String(lMsg_pc, 0, receivedpkt_pc.getLength());//將接收到的IMsg轉換成String型態
+                                //Log.d("Miga", "I got message from multicast" + message);
+                                //s_status = "I got message from multicast" + message;
+                            }
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+                Log.d("Miga", "Receive_peer_count_multicastsocket Exception" + e.toString());
             }
         }
     }

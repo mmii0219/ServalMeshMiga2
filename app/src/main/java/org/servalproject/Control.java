@@ -215,6 +215,7 @@ public class Control extends Service {
     private boolean IsInitial=false;
     private Thread t_Send_Cluster_Name = null;
     private Thread t_Receive_Cluster_Name = null;
+    private int pre_ROLE=-1;
 
     //For receive_peer_count
     private byte[] lMsg_pc;
@@ -223,6 +224,13 @@ public class Control extends Service {
     private String RecvMsg_pc="";
     private Thread t_Receive_peer_count_multi = null;
     private Thread t_Receive_peer_count_uni = null;
+    //For receive_cluster_name
+    private byte[] lMsg_cn;
+    private DatagramPacket receivedpkt_cn;
+    private DatagramSocket receivedskt_cn;//unicast
+    private String RecvMsg_cn="";
+    private Thread t_Receive_Cluster_Name_multi = null;
+    private Thread t_Receive_Cluster_Name_uni = null;
 
     public enum RoleFlag {
         NONE(0), GO(1), CLIENT(2), BRIDGE(3), HYBRID(4);//BRIDGE就是之前的RELAY, HYBRID:一邊是GO一邊是Client的身分
@@ -1332,6 +1340,15 @@ public class Control extends Service {
 
                                     Log.d("Miga", "GO send wifi ip msg to client: "+recWiFiIpAddr+", " + sendbackmessage);
 
+                                    if(ROLE == RoleFlag.CLIENT.getIndex()){//當原本的ROLE是CLIENT時，但是有收到了device傳來的ip.表示現在我這個client有member的存在
+                                        if(mNetworkInfo.isConnected())//且我的wifi還持續有連上,表示我現在ROLE是Hybrid
+                                            ROLE = RoleFlag.HYBRID.getIndex();
+                                        else//wifi沒有連上，表示我只有client.因此我是GO
+                                            ROLE = RoleFlag.GO.getIndex();
+                                    }
+                                    Log.d("Miga", "CollectIP_server/Role transform Client into : "+ROLE);
+                                    s_status= "CollectIP_server/Role transform Client into : "+ROLE ;
+
                                 }
                             }
                         }
@@ -1609,7 +1626,7 @@ public class Control extends Service {
                 while(true) {
                     if (IsP2Pconnect) {
                         if (receivedpkt_pc != null) {
-                            if (ROLE == RoleFlag.CLIENT.getIndex()) {
+                            if (ROLE == RoleFlag.CLIENT.getIndex() || ROLE == RoleFlag.HYBRID.getIndex()) {
                                 //unicast
                                 receivedskt_pc.receive(receivedpkt_pc);//把接收到的data存在receivedp.
                                 RecvMsg_pc = new String(lMsg_pc, 0, receivedpkt_pc.getLength());//將接收到的IMsg轉換成String型態
@@ -1632,7 +1649,7 @@ public class Control extends Service {
                 while(true) {
                     if (IsP2Pconnect) {
                         if (receivedpkt_pc != null) {
-                            if (ROLE == RoleFlag.GO.getIndex()) {
+                            if (ROLE == RoleFlag.GO.getIndex() || ROLE == RoleFlag.HYBRID.getIndex()) {
                                 //multicast
                                 recvPeerSocket.receive(receivedpkt_pc);//recvPeerSocket_ port:6790
                                 RecvMsg_pc = new String(lMsg_pc, 0, receivedpkt_pc.getLength());//將接收到的IMsg轉換成String型態
@@ -1821,7 +1838,49 @@ public class Control extends Service {
         public void run() {
 
             try{
-                lMsg = new byte[8192];
+                //20180326將multicast和unicast的socket分成兩個thread來寫，小的thread所接收的data會用global來儲存，再由此thread來處理資料。
+                lMsg_cn = new byte[8192];
+                receivedpkt_cn = new DatagramPacket(lMsg_cn, lMsg_cn.length);//接收到的message會存在IMsg
+                receivedskt_cn = new DatagramSocket(IP_port_for_cluster_name);
+                if (t_Receive_Cluster_Name_uni == null) {
+                    t_Receive_Cluster_Name_uni = new Receive_Cluster_Name_unicastsocket();
+                    t_Receive_Cluster_Name_uni.start();
+                }
+
+                if (t_Receive_Cluster_Name_multi == null) {
+                    t_Receive_Cluster_Name_multi = new Receive_Cluster_Name_multicastsocket();
+                    t_Receive_Cluster_Name_multi.start();
+                }
+
+                while(true) {
+                    if (RecvMsg_cn != "") {
+                        temp = RecvMsg_cn.split("#");//將message之中有#則分開存到tmep陣列裡;message =  WiFiApName + "#" + Cluster_Name + "#" + ROLE + "#" + IsReceiveGoInfo + "#" + Time_Stamp + "#" + "5";
+                        m_length = temp.length;
+                        notnull=  true;
+                        for(int i = 0; i < m_length; i++) {
+                            if(temp[i] != null && !temp[i].isEmpty() && !temp[i].equals("null")) {
+                            }else {
+                                notnull = false;
+                                break;
+                            }
+                        }
+                        if(notnull){
+                            if (Newcompare(temp[0], WiFiApName) != 0) {//接收到的不是自己的
+                                if(!IsInitial){//手動設定的device還沒進CN更新,加入這個主要是讓非手動的device近來更新
+                                    if (ROLE == RoleFlag.CLIENT.getIndex()) {
+                                        if (Integer.valueOf(temp[2]) == RoleFlag.GO.getIndex()) {//接收到的是GO傳來的
+                                            if (!IsReceiveGoInfo) {//且還沒接收過GO的Info
+                                                Cluster_Name = temp[1];
+                                                IsReceiveGoInfo = true;//已接收過GO的
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                /*lMsg = new byte[8192];
                 receivedp = new DatagramPacket(lMsg, lMsg.length);//接收到的message會存在IMsg
                 receiveds_cn = null;
                 receiveds_cn = new DatagramSocket(IP_port_for_cluster_name);//接收的Socket
@@ -1870,7 +1929,7 @@ public class Control extends Service {
                         }
                     }
 
-                }
+                }*/
 
 
             }catch (SocketException e) {
@@ -1895,6 +1954,51 @@ public class Control extends Service {
         }
     }
 
+    public class Receive_Cluster_Name_unicastsocket extends Thread{
+        public void run() {
+            try {
+                while(true) {
+                    if (IsP2Pconnect) {
+                        if (receivedpkt_cn != null) {
+                            if (ROLE == RoleFlag.CLIENT.getIndex() || ROLE == RoleFlag.HYBRID.getIndex()) {
+                                //unicast
+                                receivedskt_cn.receive(receivedpkt_cn);//把接收到的data存在receivedp.
+                                RecvMsg_cn = new String(lMsg_cn, 0, receivedpkt_cn.getLength());//將接收到的IMsg轉換成String型態
+                                //Log.d("Miga", "I got message from unicast" + message);
+                                //s_status = "I got message from unicast" + message;
+                            }
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+                Log.d("Miga", "Receive_Cluster_Name_unicastsocket Exception" + e.toString());
+            }
+        }
+    }
+
+    public class Receive_Cluster_Name_multicastsocket extends Thread{
+        public void run() {
+            try {
+                while(true) {
+                    if (IsP2Pconnect) {
+                        if (receivedpkt_cn != null) {
+                            if (ROLE == RoleFlag.GO.getIndex() || ROLE == RoleFlag.HYBRID.getIndex()) {
+                                //unicast
+                                recvCNSocket.receive(receivedpkt_cn);//把接收到的data存在receivedp.
+                                RecvMsg_cn = new String(lMsg_cn, 0, receivedpkt_cn.getLength());//將接收到的IMsg轉換成String型態
+                                //Log.d("Miga", "I got message from unicast" + message);
+                                //s_status = "I got message from unicast" + message;
+                            }
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+                Log.d("Miga", "Receive_Cluster_Name_multicastsocket Exception" + e.toString());
+            }
+        }
+    }
     @Override
     public void onCreate() {
         // Leaf0818
@@ -2126,7 +2230,7 @@ public class Control extends Service {
             }
 
             try {
-                Thread.sleep(500);
+                Thread.sleep(1000);
             } catch (InterruptedException e) {
                 // TODO Auto-generated catch block
                 e.printStackTrace();

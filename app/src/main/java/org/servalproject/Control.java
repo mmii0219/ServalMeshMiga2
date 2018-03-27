@@ -1589,6 +1589,20 @@ public class Control extends Service {
                                         //s_status = "State : (Relay)Send the message: " + message + " to " + tempkey;
                                     }
                                     sendds.close();
+                                    if (ROLE == RoleFlag.HYBRID.getIndex()) {
+                                        //multicast
+                                        if (mConnectivityManager != null) {
+                                            mNetworkInfo = mConnectivityManager.getNetworkInfo(ConnectivityManager.TYPE_WIFI);
+                                            if (mNetworkInfo.isConnected()) {
+                                                multicgroup = InetAddress.getByName("224.0.0.3");//指定multicast要發送的group
+                                                multicsk = new MulticastSocket(6790);//6790: for peertable update
+                                                msgPkt = new DatagramPacket(message.getBytes(), message.length(), multicgroup, 6790);
+                                                multicsk.send(msgPkt);
+                                                //Log.v("Miga", "multicsk send message:" + message);
+                                                //s_status = "multicsk send message" + message;
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -1734,7 +1748,8 @@ public class Control extends Service {
                             tempkey = iterator.next().toString();
                             PeerTable.put(tempkey, PeerTable.get(tempkey) - 1);//一一把PeerTable內對應到的SSID的value-1
                             if (PeerTable.get(tempkey) <= 0) {//value值
-                                PeerTable.remove(tempkey);//將此SSID移除
+                                iterator.remove();
+                                //PeerTable.remove(tempkey);//將此SSID移除 //20180327註解這句,以iterator.remove取代,避免跳出ConcurrentModificationException
                                 Log.v("Miga", "remove Peer:"+tempkey);
                                 s_status = "remove Peer:"+tempkey;
                             }

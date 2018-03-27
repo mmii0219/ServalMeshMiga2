@@ -1055,8 +1055,8 @@ public class Control extends Service {
         record_re.put("GroupPEER",Integer.toString(grouppeer));//count_peer(): PeerTable內有幾個peer,+1表示group內有幾個peer
         // total_time = total_time + (Calendar.getInstance().getTimeInMillis() - start_time) / 1000;
         //s_status = Long.toString((Calendar.getInstance().getTimeInMillis() - start_time ) / 1000) + "s/ " + sleep_time + "s, round: " + NumRound + ", State: advertising service with " + record_re.toString();
-        s_status = "State: advertising service with " + record_re.toString();
-        Log.d("Miga", "State: advertising service with " + record_re.toString());
+        s_status = "State: advertising service with " + record_re.toString()+" ROLE = " + ROLE;
+        Log.d("Miga", "State: advertising service with " + record_re.toString()+" ROLE = " + ROLE);
         serviceInfo = WifiP2pDnsSdServiceInfo.newInstance("Wi-Fi_Info", "_presence._tcp", record_re);
         manager.clearLocalServices(channel, new WifiP2pManager.ActionListener() {
             @Override
@@ -1345,9 +1345,10 @@ public class Control extends Service {
                                             ROLE = RoleFlag.HYBRID.getIndex();
                                         else//wifi沒有連上，表示我只有client.因此我是GO
                                             ROLE = RoleFlag.GO.getIndex();
+                                        Log.d("Miga", "CollectIP_server/Role transform Client into : "+ROLE);
+                                        s_status= "CollectIP_server/Role transform Client into : "+ROLE ;
                                     }
-                                    Log.d("Miga", "CollectIP_server/Role transform Client into : "+ROLE);
-                                    s_status= "CollectIP_server/Role transform Client into : "+ROLE ;
+
 
                                 }
                             }
@@ -2082,7 +2083,7 @@ public class Control extends Service {
         }, new IntentFilter(WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION));
 
         Collect_record = new ArrayList<Step1Data_set>();// Wang
-        //getBatteryCapacity();
+        getBatteryCapacity();
 
 
 
@@ -2092,28 +2093,29 @@ public class Control extends Service {
         @Override
         public void onReceive(Context ctxt, Intent intent) {
             int level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, 0);
-            power_level = level;
+            power_level = (int)(level*getBatteryCapacity()/100);//20180327 power改用比較剩餘電容量
         }
     };
     //Miga
-    public void getBatteryCapacity() {
+    public double getBatteryCapacity() {
         Object mPowerProfile_ = null;
+        double batteryCapacity = 3000;
         final String POWER_PROFILE_CLASS = "com.android.internal.os.PowerProfile";
         try {
             mPowerProfile_ = Class.forName(POWER_PROFILE_CLASS)
                     .getConstructor(Context.class).newInstance(this);
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-        try {
-            double batteryCapacity = (Double) Class
+            batteryCapacity = (Double) Class
                     .forName(POWER_PROFILE_CLASS)
                     .getMethod("getAveragePower", java.lang.String.class)
                     .invoke(mPowerProfile_, "battery.capacity");
             //s_status="batteryCapacity:"+batteryCapacity+"mAh";
+            Log.d("Miga","BatteryCapacity: "+batteryCapacity+" mAh");
+            //return batteryCapacity;
         } catch (Exception e) {
             e.printStackTrace();
+            Log.d("Miga","getBatteryCapacity Exception: "+e);
         }
+        return batteryCapacity;
     }
     //Miga for device initial create
     public class  Initial extends Thread{

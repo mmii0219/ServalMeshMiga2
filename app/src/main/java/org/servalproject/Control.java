@@ -257,10 +257,11 @@ public class Control extends Service {
         private String MAC;
         private String POWER;
         private String GroupPEER;
+        private String DROLE;
         //private String GO;
 
         public Step1Data_set(String SSID, String key, String Name, String PEER, String MAC,
-                             String POWER, String GroupPEER) {
+                             String POWER, String GroupPEER, String DROLE) {
             this.SSID = SSID;
             this.key = key;
             this.Name = Name;
@@ -268,6 +269,7 @@ public class Control extends Service {
             this.MAC = MAC;
             this.POWER = POWER;
             this.GroupPEER = GroupPEER;
+            this.DROLE = DROLE;
             //this.GO = GO;
         }
 
@@ -299,6 +301,9 @@ public class Control extends Service {
             return this.GroupPEER;
         }
 
+        String getROLE() {
+            return this.DROLE;
+        }
         /*_String getGO() {
             return this.GO;
         }*/
@@ -320,6 +325,7 @@ public class Control extends Service {
             String PEER = data.getPEER();
             String POWER = data.getPOWER();
             String GroupPeer = data.getGroupPEER();
+            String MAC = data.getMAC();
 
             if (this.PEER.compareTo(PEER) < 0) {
                 return 1;
@@ -327,19 +333,15 @@ public class Control extends Service {
                 return -1;
             }
 
-            /*if (this.POWER.equals("100")) {
-                return -1;
-            } else if(POWER.equals("100")) {
-                return 1;
-            }else */if (this.POWER.compareTo(POWER) < 0) {
+            if (this.POWER.compareTo(POWER) < 0) {
                 return 1;
             } else if (this.POWER.compareTo(POWER) > 0) {
                 return -1;
             }
 
-            if (this.SSID.compareTo(SSID) < 0) {
+            if (this.MAC.compareTo(MAC) < 0) {
                 return 1;
-            } else if (this.SSID.compareTo(SSID) > 0) {
+            } else if (this.MAC.compareTo(MAC) > 0) {
                 return -1;
             }
 
@@ -359,21 +361,21 @@ public class Control extends Service {
                 return -1;
             }
 
-            /*if (data1.getPOWER().equals("100")) {
+            if (data1.getPEER().compareTo(data2.getPEER()) < 0) {
                 return 1;
-            } else if(data2.getPOWER().equals("100")) {
+            } else if (data1.getPEER().compareTo(data2.getPEER()) > 0) {
                 return -1;
-            }else if (data1.getPOWER().compareTo(data2.getPOWER()) < 0) {
+            }
+
+            if (data1.getPOWER().compareTo(data2.getPOWER()) < 0) {
                 return -1;
             } else if (data1.getPOWER().compareTo(data2.getPOWER()) > 0) {
                 return 1;
             }
-*/
 
-
-            if (data1.getSSID().compareTo(data2.getSSID()) < 0) {
+            if (data1.getMAC().compareTo(data2.getMAC()) < 0) {
                 return 1;
-            } else if (data1.getSSID().compareTo(data2.getSSID()) > 0) {
+            } else if (data1.getMAC().compareTo(data2.getMAC()) > 0) {
                 return -1;
             }
 
@@ -584,6 +586,7 @@ public class Control extends Service {
         String MAC = null;
         String POWER = null;
         String GroupPEER = null;
+        String DROLE = null;//對方的ROLE
 
         public void run() {
             try {
@@ -613,12 +616,13 @@ public class Control extends Service {
                 }
 
                 Log.d("Miga", "WiFi_Connect/InfoChangeTime>=3");
-                if (record_set.size() == 0) {//都沒蒐集到其他人的裝置,則重新再去收集資料
+                //都沒收集到資料的話根本不會進來這個thread，所以下面的if判斷式應該不用
+                /*if (record_set.size() == 0) {//都沒蒐集到其他人的裝置,則重新再去收集資料
                     Log.d("Miga", "WiFi_Connect/Collect data and record size = 0");
                     STATE = StateFlag.ADD_SERVICE.getIndex();
                     InfoChangeTime=0;//InfoChangeTime交換次數歸零
                     return;
-                }
+                }*/
                 //Log.d("Miga", "WiFi_Connect/ROLE:"+ROLE);
                 //20180323/26 暫時先註解看看下面的code可不可行  Start
                 /*if(ROLE == RoleFlag.NONE.getIndex() || ROLE == RoleFlag.GO.getIndex()) {
@@ -687,11 +691,12 @@ public class Control extends Service {
                     MAC = record.get("MAC").toString();
                     POWER = record.get("POWER").toString();
                     GroupPEER = record.get("GroupPEER").toString();//Group內的device數量
+                    DROLE = record.get("DROLE").toString();
                     //GO = record.get("GO").toString();
                     //Log.d("Miga", "WiFi_Connect/Insert data");
 
                     if (!Name.equals(Cluster_Name)) {//只儲存不同Cluster的device資料
-                        Step1Data_set data = new Step1Data_set(SSID, key, Name, PEER, MAC, POWER, GroupPEER);
+                        Step1Data_set data = new Step1Data_set(SSID, key, Name, PEER, MAC, POWER, GroupPEER, DROLE);
                         if (!Collect_record.contains(data)) {
                             Collect_record.add(data);
                         }
@@ -699,7 +704,7 @@ public class Control extends Service {
                 }
                 //也加入自己的data
                 Step1Data_set self = new Step1Data_set(WiFiApName, GOpasswd, Cluster_Name,
-                        String.valueOf(peercount), GO_mac, String.valueOf(power_level), String.valueOf(grouppeer));
+                        String.valueOf(peercount), GO_mac, String.valueOf(power_level), String.valueOf(grouppeer), String.valueOf(ROLE));
 
                 if (!Collect_record.contains(self)) {
                     Collect_record.add(self);
@@ -843,7 +848,7 @@ public class Control extends Service {
                             }
                         }
                     }//End mConnectivityManager != null
-                }
+                }//End ROLE == RoleFlag.NONE.getIndex()
 
                 // GO檢查自己是否被其他裝置連
                 if ( ROLE == RoleFlag.GO.getIndex()) {
@@ -978,7 +983,37 @@ public class Control extends Service {
                     }
                     IsConnecting=false;
                     return;
-                }
+                }//ROLE == RoleFlag.GO.getIndex()
+
+                /*if( ROLE == RoleFlag.CLIENT.getIndex()){
+                    Log.d("Miga","Become to bridge or hybrid");
+                    s_status="State: Become to bridge or hybrid";
+                    //become to bridge or hybrid
+                    if(Collect_record.size() == 1) {//沒有收集到其他cluster的device
+                        Log.d("Miga", "Client doesn't receive data from other devices of the other cluster. ");
+                        STATE = StateFlag.ADD_SERVICE.getIndex();
+                        return;
+                    }
+                    if (mNetworkInfo.isConnected() == false) {//wifi interface還沒連上別人(GO)
+                        Log.d("Wang", "mNetworkInfo.isConnected() == false");//可能原本有連上,所以ROLE==CLIENT,但之後可能wifi突然斷線了(?)
+                        STATE = StateFlag.ADD_SERVICE.getIndex();
+                        return;
+                    }
+                    STATE = StateFlag.WAITING.getIndex();
+                    Collections.sort(Collect_record, new Step2Data_set_Comparator());//Collections根據step2的policy來排序
+                    String a;
+                    for (int i = 0; i < Collect_record.size(); i++) {
+
+                        *//*if(Collect_record.get(i).getPEER()) {
+                            if (!Collect_record.get(i).getName().equals(Cluster_Name)) {//不相等的話表示這個GO是屬於其他Cluster的,所以device可以連上他然後變成是relay連接兩個不同的cluster
+                                MAC = Collect_record.get(i).getMAC();
+                                Choose_Cluster_Name = Collect_record.get(i).getName();
+                                break;
+                            }
+                        }*//*
+                    }
+                }//End ROLE == RoleFlag.CLIENT.getIndex()
+*/
             } catch (Exception e) {
                 STATE = StateFlag.ADD_SERVICE.getIndex();
                 e.printStackTrace();
@@ -1053,10 +1088,11 @@ public class Control extends Service {
         //Wang, power level 一定要轉成 string
         record_re.put("POWER", Integer.toString(power_level));
         record_re.put("GroupPEER",Integer.toString(grouppeer));//count_peer(): PeerTable內有幾個peer,+1表示group內有幾個peer
+        record_re.put("DROLE", Integer.toString(ROLE));
         // total_time = total_time + (Calendar.getInstance().getTimeInMillis() - start_time) / 1000;
         //s_status = Long.toString((Calendar.getInstance().getTimeInMillis() - start_time ) / 1000) + "s/ " + sleep_time + "s, round: " + NumRound + ", State: advertising service with " + record_re.toString();
-        s_status = "State: advertising service with " + record_re.toString()+" ROLE = " + ROLE;
-        Log.d("Miga", "State: advertising service with " + record_re.toString()+" ROLE = " + ROLE);
+        s_status = "State: advertising service with " + record_re.toString();
+        Log.d("Miga", "State: advertising service with " + record_re.toString());
         serviceInfo = WifiP2pDnsSdServiceInfo.newInstance("Wi-Fi_Info", "_presence._tcp", record_re);
         manager.clearLocalServices(channel, new WifiP2pManager.ActionListener() {
             @Override
@@ -1339,7 +1375,10 @@ public class Control extends Service {
                                     dgsocket.send(dgpacket);
 
                                     Log.d("Miga", "GO send wifi ip msg to client: "+recWiFiIpAddr+", " + sendbackmessage);
-
+                                    //180328 Start 避免在此裝置還沒變成GO的情況下,就馬上連到另個device. 這樣這個裝置的client的peer table會接受不到
+                                    if(ROLE == RoleFlag.NONE.getIndex())
+                                        ROLE = RoleFlag.GO.getIndex();
+                                    //180328 End
                                     if(ROLE == RoleFlag.CLIENT.getIndex()){//當原本的ROLE是CLIENT時，但是有收到了device傳來的ip.表示現在我這個client有member的存在
                                         if(mNetworkInfo.isConnected())//且我的wifi還持續有連上,表示我現在ROLE是Hybrid
                                             ROLE = RoleFlag.HYBRID.getIndex();

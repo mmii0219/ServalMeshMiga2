@@ -1320,7 +1320,7 @@ public class Control extends Service {
         private PrintWriter out;
         private String recMessagetemp,recWiFiIpAddr, temp, sendbackmessage;
         private String[] recMessage;
-        private int i;
+        private int i,PreROLE;
         //private MulticastSocket clientSocket;//Miga
         private DatagramPacket msgPkt;//Miga
         private boolean isJoin=false;
@@ -1347,51 +1347,59 @@ public class Control extends Service {
                         recMessagetemp=new String(buf, 0, msgPkt.getLength());
                         recMessage = recMessagetemp.split("#");//[0]:WiFiApName(SSID),[1]: WifiIP
                         recWiFiIpAddr=recMessage[1];
-                        if(recWiFiIpAddr!="fromself") {
-                            if(!(recMessage[0].equals(WiFiApName))) {//接收到的不是自己,則可以進行IP判斷
-                                //Log.d("Miga", "I got multicast message from:" + recMessagetemp);
-                                //s_status = "I got multicast message from:" + recMessagetemp;
-                                if (IPTable.containsKey(recWiFiIpAddr)) {
-                                    /*//temp = recWiFiIpAddr;
-                                    for (i = 2; i < 254; i++) {
-                                        temp = "192.168.49." + String.valueOf(i);
-                                        if (IPTable.containsKey(temp) == false) break;
-                                    }
-                                    IPTable.put(temp, 0);
-                                    //for test
-                                    s_status=" IPTABLE " + IPTable;
-                                    Log.d("Miga", "IPTABLE: " + IPTable);
-                                    // test end
-                                    //sendbackmessage = "YES:" + temp;*/
-                                } else {
-                                    IPTable.put(recWiFiIpAddr, 0);
-                                    //for test
-                                    s_status=" IpTable " + IPTable;
-                                    Log.d("Miga", "IpTable: " + IPTable);
-
-                                    //unicast 回傳到該wifi ip address,及該port
-                                    sendbackmessage = "IpReceive";
-                                    dgpacket = new DatagramPacket(sendbackmessage.getBytes(), sendbackmessage.length(), InetAddress.getByName(recWiFiIpAddr),IP_port_for_IPSave);
-                                    dgsocket.send(dgpacket);
-
-                                    Log.d("Miga", "GO send wifi ip msg to client: "+recWiFiIpAddr+", " + sendbackmessage);
-                                    //180328 Start 避免在此裝置還沒變成GO的情況下,就馬上連到另個device. 這樣這個裝置的client的peer table會接受不到
-                                    if(ROLE == RoleFlag.NONE.getIndex())
-                                        ROLE = RoleFlag.GO.getIndex();
-                                    //180328 End
-                                    if(ROLE == RoleFlag.CLIENT.getIndex()){//當原本的ROLE是CLIENT時，但是有收到了device傳來的ip.表示現在我這個client有member的存在
-                                        if(mNetworkInfo.isConnected())//且我的wifi還持續有連上,表示我現在ROLE是Hybrid
-                                            ROLE = RoleFlag.HYBRID.getIndex();
-                                        else//wifi沒有連上，表示我只有client.因此我是GO
-                                            ROLE = RoleFlag.GO.getIndex();
-                                        Log.d("Miga", "CollectIP_server/Role transform Client into : "+ROLE);
-                                        s_status= "CollectIP_server/Role transform Client into : "+ROLE ;
-                                    }
-
-
+                        if(!(recMessage[0].equals(WiFiApName))) {//接收到的不是自己,則可以進行IP判斷
+                            //Log.d("Miga", "I got multicast message from:" + recMessagetemp);
+                            //s_status = "I got multicast message from:" + recMessagetemp;
+                            if (IPTable.containsKey(recWiFiIpAddr)) {
+                                /*//temp = recWiFiIpAddr;
+                                for (i = 2; i < 254; i++) {
+                                    temp = "192.168.49." + String.valueOf(i);
+                                    if (IPTable.containsKey(temp) == false) break;
                                 }
+                                IPTable.put(temp, 0);
+                                //for test
+                                s_status=" IPTABLE " + IPTable;
+                                Log.d("Miga", "IPTABLE: " + IPTable);
+                                // test end
+                                //sendbackmessage = "YES:" + temp;*/
+                            } else {
+                                IPTable.put(recWiFiIpAddr, 0);
+                                //for test
+                                s_status=" IpTable " + IPTable;
+                                Log.d("Miga", "IpTable: " + IPTable);
+
+                                //unicast 回傳到該wifi ip address,及該port
+                                sendbackmessage = "IpReceive";
+                                dgpacket = new DatagramPacket(sendbackmessage.getBytes(), sendbackmessage.length(), InetAddress.getByName(recWiFiIpAddr),IP_port_for_IPSave);
+                                dgsocket.send(dgpacket);
+
+                                Log.d("Miga", "GO send wifi ip msg to client: "+recWiFiIpAddr+", " + sendbackmessage);
+                                //180328 Start 避免在此裝置還沒變成GO的情況下,就馬上連到另個device. 這樣這個裝置的client的peer table會接受不到
+                                /*if(ROLE == RoleFlag.NONE.getIndex()){
+                                    if(mNetworkInfo.isConnected())
+                                        ROLE = RoleFlag.HYBRID.getIndex();
+                                    else
+                                        ROLE = RoleFlag.GO.getIndex();
+                                }*/
+                                //180328 End
+                                PreROLE = ROLE;
+                                //180329把上面的NONE加入到下面一起寫
+                                if(ROLE == RoleFlag.CLIENT.getIndex() || ROLE == RoleFlag.NONE.getIndex()){//當原本的ROLE是CLIENT時，但是有收到了device傳來的ip.表示現在我這個client有member的存在
+                                    if(mNetworkInfo.isConnected()) {//且我的wifi還持續有連上,表示我現在ROLE是Hybrid
+                                        ROLE = RoleFlag.HYBRID.getIndex();
+                                        IsP2Pconnect = true;
+                                    }else {//wifi沒有連上，表示我只有client.因此我是GO
+                                        ROLE = RoleFlag.GO.getIndex();
+                                        IsP2Pconnect = true;
+                                    }
+                                    Log.d("Miga", "CollectIP_server/Role transform ROLE= "+PreROLE+" into : "+ROLE);
+                                    s_status= "CollectIP_server/Role transform ROLE= "+PreROLE+" into : "+ROLE;
+                                }
+
+
                             }
                         }
+
                     }
 
                 }
@@ -1447,9 +1455,6 @@ public class Control extends Service {
                     //Thread.sleep(20000);
                     multicgroup = InetAddress.getByName("224.0.0.3");//指定multicast要發送的group
                     multicsk = new MulticastSocket(6789);
-                    /*if(WiFiIpAddr==null||WiFiIpAddr==""){
-                        WiFiIpAddr = "fromself";//WiFiIpAddr
-                    }*/
                     message =  WiFiApName+"#" +WiFiIpAddr;
                     msgPkt = new DatagramPacket(message.getBytes(), message.length(), multicgroup, 6789);
                     multicsk.send(msgPkt);
@@ -1460,14 +1465,29 @@ public class Control extends Service {
                     if(dgpkt != null){
                         dgskt.receive(dgpkt);
                         recmessage = new String(bcMsg, 0 , dgpkt.getLength());
-                        Log.d("Miga","Client get GO's msg:"+recmessage);
-                        if(recmessage=="IpReceive") {
+                        //Log.d("Miga","Client get GO's msg:"+recmessage);
+                        if(recmessage.equals("IpReceive")) {//recmessage=="IpReceive" ,用==是比較物件, 在這裡字串比較應該用str.equals(str2);比較好
                             isSuccessSend = true;
                             Log.d("Miga","Client get GO's msg: IpReceive");
 
                         }
                     }
+                    //避免此裝置先變成了GO但是之後又發送ip給他的GO, 這樣此裝置的ROLE應為HYBRIYD才對
+                    manager.requestGroupInfo(channel, new WifiP2pManager.GroupInfoListener() {
+                        @Override
+                        public void onGroupInfoAvailable(WifiP2pGroup group) {
+                            if (group != null) {
+                                if(!group.getClientList().isEmpty()){
+                                    if(ROLE==RoleFlag.GO.getIndex()) {
+                                        ROLE = RoleFlag.HYBRID.getIndex();
+                                        IsP2Pconnect = true;
+                                        Log.d("Miga", "SendWiFiIpAddr/GO->HYBRID");
+                                    }
+                                }
 
+                            }
+                        }
+                    });
                     Thread.sleep(1000);
 
                 }
@@ -2148,7 +2168,7 @@ public class Control extends Service {
                     .getMethod("getAveragePower", java.lang.String.class)
                     .invoke(mPowerProfile_, "battery.capacity");
             //s_status="batteryCapacity:"+batteryCapacity+"mAh";
-            Log.d("Miga","BatteryCapacity: "+batteryCapacity+" mAh");
+            //Log.d("Miga","BatteryCapacity: "+batteryCapacity+" mAh");
             //return batteryCapacity;
         } catch (Exception e) {
             e.printStackTrace();

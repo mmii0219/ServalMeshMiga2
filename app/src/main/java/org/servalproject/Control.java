@@ -231,6 +231,10 @@ public class Control extends Service {
     private String RecvMsg_cn="";
     private Thread t_Receive_Cluster_Name_multi = null;
     private Thread t_Receive_Cluster_Name_uni = null;
+    //For Step2 judgment
+    private boolean IsManual = false;
+    //For Step2
+    private String Choose_Cluster_Name,PreClusterName="";
 
     public enum RoleFlag {
         NONE(0), GO(1), CLIENT(2), BRIDGE(3), HYBRID(4);//BRIDGE就是之前的RELAY, HYBRID:一邊是GO一邊是Client的身分
@@ -738,253 +742,412 @@ public class Control extends Service {
 
                 //20180323/26 新加入 End
 
-
-                if(ROLE == RoleFlag.NONE.getIndex()) {//還沒檢查並連線過,則進行判斷
-                    if (mConnectivityManager != null) {
-                        mNetworkInfo = mConnectivityManager.getNetworkInfo(ConnectivityManager.TYPE_WIFI);
-                        if (!mNetworkInfo.isConnected()) {//Wifi還沒連上其他GO,則進行連線
-                            if (SSID.equals(WiFiApName)) {
-                                //如果自己是排序第一個的話則不做事,只需等待別人來連線
-                                ROLE = RoleFlag.GO.getIndex();//變為GO
-                                Log.d("Miga","CreateGroup time : " + Double.toString(((Calendar.getInstance().getTimeInMillis() - start_time) / 1000.0))  +" stay_time : " +  Double.toString((sleep_time/1000.0))
-                                        +  " Round_Num :" + NumRound);
-                                Log.d("Miga", "WiFi_Connect/ROLE: " + ROLE);
-                                STATE = StateFlag.ADD_SERVICE.getIndex();
-                                Isconnect=true;
-                                IsP2Pconnect=true;//p2p已有人連上/被連上,目前主要是用來判斷是否可以開始進行Group內peer的計算
-                                return;
-                            } else {//連上別人
-                                // Try to connect Ap(連上排序第一個or第二個的裝置)
-                                IsConnecting=true;//正在連線中,避免Reconnecting_Wifi繼續執行
-                                WifiConfiguration wc = new WifiConfiguration();
-                                s_status = "State: choosing peer done, try to associate with" + ": SSID name: " + SSID + " , passwd: " + key;
-                                Log.d("Miga", "State: choosing peer done, try to associate with" + ": SSID name: " + SSID + " , passwd: " + key);
-                                wc.SSID = "\"" + SSID + "\"";
-                                wc.preSharedKey = "\"" + key + "\"";
-                                wc.hiddenSSID = true;
-                                wc.status = WifiConfiguration.Status.ENABLED;
-                                wc.allowedGroupCiphers.set(WifiConfiguration.GroupCipher.TKIP);
-                                wc.allowedGroupCiphers.set(WifiConfiguration.GroupCipher.CCMP);
-                                wc.allowedKeyManagement.set(WifiConfiguration.KeyMgmt.WPA_PSK);
-                                wc.allowedPairwiseCiphers.set(WifiConfiguration.PairwiseCipher.TKIP);
-                                wc.allowedPairwiseCiphers.set(WifiConfiguration.PairwiseCipher.CCMP);
-                                wc.allowedProtocols.set(WifiConfiguration.Protocol.RSN);
-                                TryNum = 25;
-                                //檢查我們所要連的GO是否還存在
-                                wifiScanCheck = false;
-                                wifi.startScan();//startScan完畢後，wifi會呼叫SCAN_RESULTS_AVAILABLE_ACTION
-                                long wifiscan_time_start = Calendar.getInstance().getTimeInMillis();
-                                while (wifiScanCheck == false) {//在onCreate時有註冊一個廣播器,專門來徵測wifi scan的結果,wifi.startscan完畢後,wifiScanCheck應該會變為true
-                                    ;
-                                }
-                                sleep_time = sleep_time + Calendar.getInstance().getTimeInMillis() - wifiscan_time_start;
-                                wifiScanCheck = false;
-                                boolean findIsGoExist = false;
-
-                                for (int i = 0; i < wifi_scan_results.size(); i++) {//檢查接下來要連上的GO還在不在,wifi_scan_results:會列出掃描到的所有AP
-                                    ScanResult sr = wifi_scan_results.get(i);
-                                    if (sr.SSID.equals(SSID)) {//去比對每一個掃描到的AP,看是不是我們要連上的GO,若是則將findIsGoExist設為true並跳出for迴圈
-                                        findIsGoExist = true;
-                                        break;
-                                    }
-                                }
-                                //Log.d("Miga", "WiFi_Connect/findIsGoExist : " + findIsGoExist);
-                                if (findIsGoExist == false) {//若我們要連的GO不見的話,則回到ADD_SERVICE,重新再收集資料一次.20180307Miga 這裡可能要再想一下後面的流程
+                if(!IsManual) {//非手動
+                    if (ROLE == RoleFlag.NONE.getIndex()) {//還沒檢查並連線過,則進行判斷
+                        if (mConnectivityManager != null) {
+                            mNetworkInfo = mConnectivityManager.getNetworkInfo(ConnectivityManager.TYPE_WIFI);
+                            if (!mNetworkInfo.isConnected()) {//Wifi還沒連上其他GO,則進行連線
+                                if (SSID.equals(WiFiApName)) {
+                                    //如果自己是排序第一個的話則不做事,只需等待別人來連線
+                                    ROLE = RoleFlag.GO.getIndex();//變為GO
+                                    Log.d("Miga", "CreateGroup time : " + Double.toString(((Calendar.getInstance().getTimeInMillis() - start_time) / 1000.0)) + " stay_time : " + Double.toString((sleep_time / 1000.0))
+                                            + " Round_Num :" + NumRound);
+                                    Log.d("Miga", "WiFi_Connect/ROLE: " + ROLE);
                                     STATE = StateFlag.ADD_SERVICE.getIndex();
+                                    Isconnect = true;
+                                    IsP2Pconnect = true;//p2p已有人連上/被連上,目前主要是用來判斷是否可以開始進行Group內peer的計算
+                                    return;
+                                } else {//連上別人
+                                    // Try to connect Ap(連上排序第一個or第二個的裝置)
+                                    IsConnecting = true;//正在連線中,避免Reconnecting_Wifi繼續執行
+                                    WifiConfiguration wc = new WifiConfiguration();
+                                    s_status = "State: choosing peer done, try to associate with" + ": SSID name: " + SSID + " , passwd: " + key;
+                                    Log.d("Miga", "State: choosing peer done, try to associate with" + ": SSID name: " + SSID + " , passwd: " + key);
+                                    wc.SSID = "\"" + SSID + "\"";
+                                    wc.preSharedKey = "\"" + key + "\"";
+                                    wc.hiddenSSID = true;
+                                    wc.status = WifiConfiguration.Status.ENABLED;
+                                    wc.allowedGroupCiphers.set(WifiConfiguration.GroupCipher.TKIP);
+                                    wc.allowedGroupCiphers.set(WifiConfiguration.GroupCipher.CCMP);
+                                    wc.allowedKeyManagement.set(WifiConfiguration.KeyMgmt.WPA_PSK);
+                                    wc.allowedPairwiseCiphers.set(WifiConfiguration.PairwiseCipher.TKIP);
+                                    wc.allowedPairwiseCiphers.set(WifiConfiguration.PairwiseCipher.CCMP);
+                                    wc.allowedProtocols.set(WifiConfiguration.Protocol.RSN);
+                                    TryNum = 25;
+                                    //檢查我們所要連的GO是否還存在
+                                    wifiScanCheck = false;
+                                    wifi.startScan();//startScan完畢後，wifi會呼叫SCAN_RESULTS_AVAILABLE_ACTION
+                                    long wifiscan_time_start = Calendar.getInstance().getTimeInMillis();
+                                    while (wifiScanCheck == false) {//在onCreate時有註冊一個廣播器,專門來徵測wifi scan的結果,wifi.startscan完畢後,wifiScanCheck應該會變為true
+                                        ;
+                                    }
+                                    sleep_time = sleep_time + Calendar.getInstance().getTimeInMillis() - wifiscan_time_start;
+                                    wifiScanCheck = false;
+                                    boolean findIsGoExist = false;
+
+                                    for (int i = 0; i < wifi_scan_results.size(); i++) {//檢查接下來要連上的GO還在不在,wifi_scan_results:會列出掃描到的所有AP
+                                        ScanResult sr = wifi_scan_results.get(i);
+                                        if (sr.SSID.equals(SSID)) {//去比對每一個掃描到的AP,看是不是我們要連上的GO,若是則將findIsGoExist設為true並跳出for迴圈
+                                            findIsGoExist = true;
+                                            break;
+                                        }
+                                    }
+                                    //Log.d("Miga", "WiFi_Connect/findIsGoExist : " + findIsGoExist);
+                                    if (findIsGoExist == false) {//若我們要連的GO不見的話,則回到ADD_SERVICE,重新再收集資料一次.20180307Miga 這裡可能要再想一下後面的流程
+                                        STATE = StateFlag.ADD_SERVICE.getIndex();
+                                        return;
+                                    }
+
+                                    //使用wifi interface連線,連上GO
+                                    int res = wifi.addNetwork(wc);
+                                    isWifiConnect = wifi.enableNetwork(res, true);//學長的temp
+                                    while (!mNetworkInfo.isConnected() && TryNum > 0) {//wifi interface沒成功連上,開始不斷嘗試連接
+                                        isWifiConnect = wifi.enableNetwork(res, true);
+                                        Thread.sleep(1000);
+                                        sleep_time = sleep_time + 1000;
+                                        TryNum--;
+
+                                        s_status = "State: associating GO, enable true:?" + isWifiConnect + " remainder #attempt:"
+                                                + TryNum;
+                                        Log.d("Miga", "State: associating GO, enable true:?" + isWifiConnect
+                                                + " remainder #attempt:" + TryNum);
+                                        mNetworkInfo = mConnectivityManager.getNetworkInfo(ConnectivityManager.TYPE_WIFI);
+                                    }//End While
+
+                                    //成功連上GO
+                                    if (mNetworkInfo.isConnected()) {
+                                        // renew service record information
+                                        Cluster_Name = Name;//將自己的Cluster_Name更新為新的GO的Cluster_Name //Miga 20180118 將自己的clusterName更新了
+                                        ROLE = RoleFlag.CLIENT.getIndex();//變為CLIENT
+                                        s_status = "JoinGroup time : " + Double.toString(((Calendar.getInstance().getTimeInMillis() - start_time) / 1000.0)) + " stay_time : " + Double.toString((sleep_time / 1000.0))
+                                                + " Round_Num :" + NumRound;
+                                        Log.d("Miga", "JoinGroup time : " + Double.toString(((Calendar.getInstance().getTimeInMillis() - start_time) / 1000.0)) + " stay_time : " + Double.toString((sleep_time / 1000.0))
+                                                + " Round_Num :" + NumRound);
+                                        WiFiIpAddr = wifiIpAddress();//取得wifi IP address
+                                        Log.d("Miga", "WiFi_Connect/ROLE:" + ROLE + "Cluster_Name:" + Cluster_Name + " wifiIpAddress:" + WiFiIpAddr);
+                                        s_status = "state: WiFiIpAddress=" + WiFiIpAddr;
+                                        if (!isOpenSWIAThread) {//開啟client傳送wifi ip address thread給GO
+                                            if (SendWiFiIpAddr == null) {
+                                                SendWiFiIpAddr = new SendWiFiIpAddr();
+                                                SendWiFiIpAddr.start();
+                                            }
+                                            isOpenSWIAThread = true;
+                                        }
+
+                                        //CheckChangeIP(WiFiIpAddr);// Miga Add 20180307. 讓client丟自己的wifi ip addr.給GO檢查,並讓GO的IPTable內有這組ip(為了讓GO進行unicast傳送訊息用)
+                                        STATE = StateFlag.ADD_SERVICE.getIndex();
+                                        Isconnect = true;
+                                        IsP2Pconnect = true;//p2p已有人連上/被連上,目前主要是用來判斷是否可以開始進行Group內peer的計算
+                                        //isCheck = true;//檢查完畢
+                                    } else {
+                                        STATE = StateFlag.ADD_SERVICE.getIndex();//如果wifi interface沒有連上表示可能資訊不夠新, 重add_service重新開始
+                                        List<WifiConfiguration> list = wifi.getConfiguredNetworks();
+                                        for (WifiConfiguration i : list) {
+                                            wifi.removeNetwork(i.networkId);//移除所有之前wifi連線網路的設定
+                                            wifi.saveConfiguration();//除存設定
+                                        }
+                                    }
+                                    IsConnecting = false;
                                     return;
                                 }
-
-                                //使用wifi interface連線,連上GO
-                                int res = wifi.addNetwork(wc);
-                                isWifiConnect = wifi.enableNetwork(res, true);//學長的temp
-                                while (!mNetworkInfo.isConnected() && TryNum > 0) {//wifi interface沒成功連上,開始不斷嘗試連接
-                                    isWifiConnect = wifi.enableNetwork(res, true);
-                                    Thread.sleep(1000);
-                                    sleep_time = sleep_time + 1000;
-                                    TryNum--;
-
-                                    s_status = "State: associating GO, enable true:?" + isWifiConnect + " remainder #attempt:"
-                                            + TryNum;
-                                    Log.d("Miga", "State: associating GO, enable true:?" + isWifiConnect
-                                            + " remainder #attempt:" + TryNum);
-                                    mNetworkInfo = mConnectivityManager.getNetworkInfo(ConnectivityManager.TYPE_WIFI);
-                                }//End While
-
-                                //成功連上GO
-                                if (mNetworkInfo.isConnected()) {
-                                    // renew service record information
-                                    Cluster_Name = Name;//將自己的Cluster_Name更新為新的GO的Cluster_Name //Miga 20180118 將自己的clusterName更新了
-                                    ROLE = RoleFlag.CLIENT.getIndex();//變為CLIENT
-                                    s_status = "JoinGroup time : " + Double.toString(((Calendar.getInstance().getTimeInMillis() - start_time) / 1000.0))  +" stay_time : " +  Double.toString((sleep_time/1000.0))
-                                            +  " Round_Num :" + NumRound;
-                                    Log.d("Miga","JoinGroup time : " + Double.toString(((Calendar.getInstance().getTimeInMillis() - start_time) / 1000.0))  +" stay_time : " +  Double.toString((sleep_time/1000.0))
-                                            +  " Round_Num :" + NumRound);
-                                    WiFiIpAddr = wifiIpAddress();//取得wifi IP address
-                                    Log.d("Miga", "WiFi_Connect/ROLE:" + ROLE + "Cluster_Name:" + Cluster_Name+" wifiIpAddress:"+WiFiIpAddr);
-                                    s_status="state: WiFiIpAddress="+WiFiIpAddr;
-                                    if(!isOpenSWIAThread){//開啟client傳送wifi ip address thread給GO
-                                        if (SendWiFiIpAddr == null) {
-                                            SendWiFiIpAddr = new SendWiFiIpAddr();
-                                            SendWiFiIpAddr.start();
-                                        }
-                                        isOpenSWIAThread=true;
-                                    }
-
-                                    //CheckChangeIP(WiFiIpAddr);// Miga Add 20180307. 讓client丟自己的wifi ip addr.給GO檢查,並讓GO的IPTable內有這組ip(為了讓GO進行unicast傳送訊息用)
-                                    STATE = StateFlag.ADD_SERVICE.getIndex();
-                                    Isconnect=true;
-                                    IsP2Pconnect=true;//p2p已有人連上/被連上,目前主要是用來判斷是否可以開始進行Group內peer的計算
-                                    //isCheck = true;//檢查完畢
-                                }else {
-                                    STATE = StateFlag.ADD_SERVICE.getIndex();//如果wifi interface沒有連上表示可能資訊不夠新, 重add_service重新開始
-                                    List<WifiConfiguration> list = wifi.getConfiguredNetworks();
-                                    for (WifiConfiguration i : list) {
-                                        wifi.removeNetwork(i.networkId);//移除所有之前wifi連線網路的設定
-                                        wifi.saveConfiguration();//除存設定
-                                    }
-                                }
-                                IsConnecting=false;
-                                return;
                             }
-                        }
-                    }//End mConnectivityManager != null
-                }//End ROLE == RoleFlag.NONE.getIndex()
+                        }//End mConnectivityManager != null
+                    }//End ROLE == RoleFlag.NONE.getIndex()
 
-                // GO檢查自己是否被其他裝置連
-                if ( ROLE == RoleFlag.GO.getIndex()) {
-                    if(peerCount > 1) {//peerCount是計算同個group內裡面有幾個device,若是>1的話表示GO有被其他裝置連(=1表示只有GO自己)
-                        detect_run = 0;
-                        STATE = StateFlag.ADD_SERVICE.getIndex();
-                        return;
-                    }else if(detect_run < 3){//若peerCount=1,且detect_run<5(給GO 5次機會去看看Group內會不會將來有device連上他)
-                        detect_run++;
-                        STATE = StateFlag.ADD_SERVICE.getIndex();
-                        return;
-                    }
-                    //GO被孤立
-                    //利用line1080抓get(0)來檢查
-                    if (SSID.equals(WiFiApName) ) {//會相等表示line1080抓到的是自己的data(自己將來應該是這群device的GO),因此檢查有沒有被其他裝置連並且檢查是否孤立
-                        //Miga20180117 會執行到這邊的原因是因為GO被孤立了,因為他的peerCount不大於0,表示他的cluster內只有自己一個人
-                        if (Collect_record.get(1) != null) {//因為自己是GO,但是peerCount又沒有>1,表示說應該是被孤立了,因此將SSID改設為排序第二的device,之後可能會連到該device
-                            SSID = Collect_record.get(1).getSSID();//因此這個被孤立的GO//Miga20180117 peerCount應該是計算同個cluster內裡面有幾個device,若是>0的話表示GO有被其他裝置連(因為同cluster內數量>0)
-                            key = Collect_record.get(1).getkey();
-                            Name = Collect_record.get(1).getName();
-                            PEER = Collect_record.get(1).getPEER();
-                            MAC = Collect_record.get(1).getMAC();
-                        } else {//完全被孤立,附近都沒有裝置可以連,因此回到ADD_SERVICE繼續搜尋
+                    // GO檢查自己是否被其他裝置連
+                    if (ROLE == RoleFlag.GO.getIndex()) {
+                        if (peerCount > 1) {//peerCount是計算同個group內裡面有幾個device,若是>1的話表示GO有被其他裝置連(=1表示只有GO自己)
                             detect_run = 0;
                             STATE = StateFlag.ADD_SERVICE.getIndex();
                             return;
+                        } else if (detect_run < 3) {//若peerCount=1,且detect_run<5(給GO 5次機會去看看Group內會不會將來有device連上他)
+                            detect_run++;
+                            STATE = StateFlag.ADD_SERVICE.getIndex();
+                            return;
                         }
+                        //GO被孤立
+                        //利用line1080抓get(0)來檢查
+                        if (SSID.equals(WiFiApName)) {//會相等表示line1080抓到的是自己的data(自己將來應該是這群device的GO),因此檢查有沒有被其他裝置連並且檢查是否孤立
+                            //Miga20180117 會執行到這邊的原因是因為GO被孤立了,因為他的peerCount不大於0,表示他的cluster內只有自己一個人
+                            if (Collect_record.get(1) != null) {//因為自己是GO,但是peerCount又沒有>1,表示說應該是被孤立了,因此將SSID改設為排序第二的device,之後可能會連到該device
+                                SSID = Collect_record.get(1).getSSID();//因此這個被孤立的GO//Miga20180117 peerCount應該是計算同個cluster內裡面有幾個device,若是>0的話表示GO有被其他裝置連(因為同cluster內數量>0)
+                                key = Collect_record.get(1).getkey();
+                                Name = Collect_record.get(1).getName();
+                                PEER = Collect_record.get(1).getPEER();
+                                MAC = Collect_record.get(1).getMAC();
+                            } else {//完全被孤立,附近都沒有裝置可以連,因此回到ADD_SERVICE繼續搜尋
+                                detect_run = 0;
+                                STATE = StateFlag.ADD_SERVICE.getIndex();
+                                return;
+                            }
 
-                    }
-                    //用WIFI_INTERFACE去聯別人
-                    STATE = StateFlag.WAITING.getIndex();
-                    s_status = "State: GO choosing peer";
-                    Log.d("Miga", "State: GO choosing peer");
+                        }
+                        //用WIFI_INTERFACE去聯別人
+                        STATE = StateFlag.WAITING.getIndex();
+                        s_status = "State: GO choosing peer";
+                        Log.d("Miga", "State: GO choosing peer");
 
-                    if (mConnectivityManager != null) {
-                        mNetworkInfo = mConnectivityManager.getNetworkInfo(ConnectivityManager.TYPE_WIFI);
-                        if (mNetworkInfo != null) {
-                            if (mNetworkInfo.isConnected() == true) {//Wifi interface有連上
-                                wifi.disconnect();//斷掉wifi interface的連線,
-                                Thread.sleep(1000);
-                                sleep_time = sleep_time + 1000;
+                        if (mConnectivityManager != null) {
+                            mNetworkInfo = mConnectivityManager.getNetworkInfo(ConnectivityManager.TYPE_WIFI);
+                            if (mNetworkInfo != null) {
+                                if (mNetworkInfo.isConnected() == true) {//Wifi interface有連上
+                                    wifi.disconnect();//斷掉wifi interface的連線,
+                                    Thread.sleep(1000);
+                                    sleep_time = sleep_time + 1000;
+                                }
                             }
                         }
-                    }
-                    List<WifiConfiguration> list = wifi.getConfiguredNetworks();
-                    for (WifiConfiguration i : list) {
-                        wifi.removeNetwork(i.networkId);//移除所有之前wifi連線網路的設定
-                        wifi.saveConfiguration();//除存設定
-                    }
-                    //連上別人
-                    // Try to connect Ap(連上排序第一個or第二個的裝置)
-                    IsConnecting=true;//正在連線中,避免Reconnecting_Wifi繼續執行
-                    WifiConfiguration wc = new WifiConfiguration();
-                    s_status = "State: choosing peer done, try to associate with" + ": SSID name: " + SSID + " , passwd: " + key;
-                    Log.d("Miga", "State: choosing peer done, try to associate with" + ": SSID name: " + SSID + " , passwd: " + key);
-                    wc.SSID = "\"" + SSID + "\"";
-                    wc.preSharedKey = "\"" + key + "\"";
-                    wc.hiddenSSID = true;
-                    wc.status = WifiConfiguration.Status.ENABLED;
-                    wc.allowedGroupCiphers.set(WifiConfiguration.GroupCipher.TKIP);
-                    wc.allowedGroupCiphers.set(WifiConfiguration.GroupCipher.CCMP);
-                    wc.allowedKeyManagement.set(WifiConfiguration.KeyMgmt.WPA_PSK);
-                    wc.allowedPairwiseCiphers.set(WifiConfiguration.PairwiseCipher.TKIP);
-                    wc.allowedPairwiseCiphers.set(WifiConfiguration.PairwiseCipher.CCMP);
-                    wc.allowedProtocols.set(WifiConfiguration.Protocol.RSN);
-                    TryNum = 25;
-                    //檢查我們所要連的GO是否還存在
-                    wifiScanCheck = false;
-                    long wifiscan_time_start = Calendar.getInstance().getTimeInMillis();
-                    while (wifiScanCheck == false) {//在onCreate時有註冊一個廣播器,專門來徵測wifi scan的結果,wifi.startscan完畢後,wifiScanCheck應該會變為true
-                        ;
-                    }
-                    sleep_time = sleep_time + Calendar.getInstance().getTimeInMillis() - wifiscan_time_start;
-                    wifiScanCheck = false;
-                    boolean findIsGoExist = false;
-
-                    for (int i = 0; i < wifi_scan_results.size(); i++) {//檢查接下來要連上的GO還在不在,wifi_scan_results:會列出掃描到的所有AP
-                        ScanResult sr = wifi_scan_results.get(i);
-                        if (sr.SSID.equals(SSID)) {//去比對每一個掃描到的AP,看是不是我們要連上的GO,若是則將findIsGoExist設為true並跳出for迴圈
-                            findIsGoExist = true;
-                            break;
-                        }
-                    }
-                    //Log.d("Miga", "WiFi_Connect/findIsGoExist : " + findIsGoExist);
-                    if (findIsGoExist == false) {//若我們要連的GO不見的話,則回到ADD_SERVICE,重新再收集資料一次.20180307Miga 這裡可能要再想一下後面的流程
-                        STATE = StateFlag.ADD_SERVICE.getIndex();
-                        return;
-                    }
-
-                    //使用wifi interface連線,連上GO
-                    int res = wifi.addNetwork(wc);
-                    isWifiConnect = wifi.enableNetwork(res, true);//學長的temp
-                    while (!mNetworkInfo.isConnected() && TryNum > 0) {//wifi interface沒成功連上,開始不斷嘗試連接
-                        isWifiConnect = wifi.enableNetwork(res, true);
-                        Thread.sleep(1000);
-                        sleep_time = sleep_time + 1000;
-                        TryNum--;
-
-                        s_status = "State: associating GO, enable true:?" + isWifiConnect + " remainder #attempt:"
-                                + TryNum;
-                        Log.d("Miga", "State: associating GO, enable true:?" + isWifiConnect
-                                + " remainder #attempt:" + TryNum);
-                        mNetworkInfo = mConnectivityManager.getNetworkInfo(ConnectivityManager.TYPE_WIFI);
-                    }//End While
-
-                    //成功連上GO
-                    if (mNetworkInfo.isConnected()) {
-                        // renew service record information
-                        Cluster_Name = Name;//將自己的Cluster_Name更新為新的GO的Cluster_Name //Miga 20180118 將自己的clusterName更新了
-                        ROLE = RoleFlag.CLIENT.getIndex();//變為CLIENT
-                        WiFiIpAddr = wifiIpAddress();//取得wifi IP address
-                        Log.d("Miga", "WiFi_Connect/ROLE:" + ROLE + " Cluster_Name:" + Cluster_Name+" wifiIpAddress:"+WiFiIpAddr);
-                        s_status="state: WiFiIpAddress="+WiFiIpAddr;
-                        if(!isOpenSWIAThread){//開啟client傳送wifi ip address thread給GO
-                            if (SendWiFiIpAddr == null) {
-                                SendWiFiIpAddr = new SendWiFiIpAddr();
-                                SendWiFiIpAddr.start();
-                            }
-                            isOpenSWIAThread=true;
-                        }
-
-                        //CheckChangeIP(WiFiIpAddr);// Miga Add 20180307. 讓client丟自己的wifi ip addr.給GO檢查,並讓GO的IPTable內有這組ip(為了讓GO進行unicast傳送訊息用)
-                        STATE = StateFlag.ADD_SERVICE.getIndex();
-                        Isconnect=true;//p2p已有人連上/被連上,目前主要是用來判斷是否可以開始進行Group內peer的計算
-                        IsP2Pconnect=true;
-                    }else {
-                        STATE = StateFlag.ADD_SERVICE.getIndex();//如果wifi interface沒有連上表示可能資訊不夠新, 重add_service重新開始
+                        List<WifiConfiguration> list = wifi.getConfiguredNetworks();
                         for (WifiConfiguration i : list) {
                             wifi.removeNetwork(i.networkId);//移除所有之前wifi連線網路的設定
                             wifi.saveConfiguration();//除存設定
                         }
-                    }
-                    IsConnecting=false;
-                    return;
-                }//ROLE == RoleFlag.GO.getIndex()
+                        //連上別人
+                        // Try to connect Ap(連上排序第一個or第二個的裝置)
+                        IsConnecting = true;//正在連線中,避免Reconnecting_Wifi繼續執行
+                        WifiConfiguration wc = new WifiConfiguration();
+                        s_status = "State: choosing peer done, try to associate with" + ": SSID name: " + SSID + " , passwd: " + key;
+                        Log.d("Miga", "State: choosing peer done, try to associate with" + ": SSID name: " + SSID + " , passwd: " + key);
+                        wc.SSID = "\"" + SSID + "\"";
+                        wc.preSharedKey = "\"" + key + "\"";
+                        wc.hiddenSSID = true;
+                        wc.status = WifiConfiguration.Status.ENABLED;
+                        wc.allowedGroupCiphers.set(WifiConfiguration.GroupCipher.TKIP);
+                        wc.allowedGroupCiphers.set(WifiConfiguration.GroupCipher.CCMP);
+                        wc.allowedKeyManagement.set(WifiConfiguration.KeyMgmt.WPA_PSK);
+                        wc.allowedPairwiseCiphers.set(WifiConfiguration.PairwiseCipher.TKIP);
+                        wc.allowedPairwiseCiphers.set(WifiConfiguration.PairwiseCipher.CCMP);
+                        wc.allowedProtocols.set(WifiConfiguration.Protocol.RSN);
+                        TryNum = 25;
+                        //檢查我們所要連的GO是否還存在
+                        wifiScanCheck = false;
+                        long wifiscan_time_start = Calendar.getInstance().getTimeInMillis();
+                        while (wifiScanCheck == false) {//在onCreate時有註冊一個廣播器,專門來徵測wifi scan的結果,wifi.startscan完畢後,wifiScanCheck應該會變為true
+                            ;
+                        }
+                        sleep_time = sleep_time + Calendar.getInstance().getTimeInMillis() - wifiscan_time_start;
+                        wifiScanCheck = false;
+                        boolean findIsGoExist = false;
 
+                        for (int i = 0; i < wifi_scan_results.size(); i++) {//檢查接下來要連上的GO還在不在,wifi_scan_results:會列出掃描到的所有AP
+                            ScanResult sr = wifi_scan_results.get(i);
+                            if (sr.SSID.equals(SSID)) {//去比對每一個掃描到的AP,看是不是我們要連上的GO,若是則將findIsGoExist設為true並跳出for迴圈
+                                findIsGoExist = true;
+                                break;
+                            }
+                        }
+                        //Log.d("Miga", "WiFi_Connect/findIsGoExist : " + findIsGoExist);
+                        if (findIsGoExist == false) {//若我們要連的GO不見的話,則回到ADD_SERVICE,重新再收集資料一次.20180307Miga 這裡可能要再想一下後面的流程
+                            STATE = StateFlag.ADD_SERVICE.getIndex();
+                            return;
+                        }
+
+                        //使用wifi interface連線,連上GO
+                        int res = wifi.addNetwork(wc);
+                        isWifiConnect = wifi.enableNetwork(res, true);//學長的temp
+                        while (!mNetworkInfo.isConnected() && TryNum > 0) {//wifi interface沒成功連上,開始不斷嘗試連接
+                            isWifiConnect = wifi.enableNetwork(res, true);
+                            Thread.sleep(1000);
+                            sleep_time = sleep_time + 1000;
+                            TryNum--;
+
+                            s_status = "State: associating GO, enable true:?" + isWifiConnect + " remainder #attempt:"
+                                    + TryNum;
+                            Log.d("Miga", "State: associating GO, enable true:?" + isWifiConnect
+                                    + " remainder #attempt:" + TryNum);
+                            mNetworkInfo = mConnectivityManager.getNetworkInfo(ConnectivityManager.TYPE_WIFI);
+                        }//End While
+
+                        //成功連上GO
+                        if (mNetworkInfo.isConnected()) {
+                            // renew service record information
+                            Cluster_Name = Name;//將自己的Cluster_Name更新為新的GO的Cluster_Name //Miga 20180118 將自己的clusterName更新了
+                            ROLE = RoleFlag.CLIENT.getIndex();//變為CLIENT
+                            WiFiIpAddr = wifiIpAddress();//取得wifi IP address
+                            Log.d("Miga", "WiFi_Connect/ROLE:" + ROLE + " Cluster_Name:" + Cluster_Name + " wifiIpAddress:" + WiFiIpAddr);
+                            s_status = "state: WiFiIpAddress=" + WiFiIpAddr;
+                            if (!isOpenSWIAThread) {//開啟client傳送wifi ip address thread給GO
+                                if (SendWiFiIpAddr == null) {
+                                    SendWiFiIpAddr = new SendWiFiIpAddr();
+                                    SendWiFiIpAddr.start();
+                                }
+                                isOpenSWIAThread = true;
+                            }
+
+                            //CheckChangeIP(WiFiIpAddr);// Miga Add 20180307. 讓client丟自己的wifi ip addr.給GO檢查,並讓GO的IPTable內有這組ip(為了讓GO進行unicast傳送訊息用)
+                            STATE = StateFlag.ADD_SERVICE.getIndex();
+                            Isconnect = true;//p2p已有人連上/被連上,目前主要是用來判斷是否可以開始進行Group內peer的計算
+                            IsP2Pconnect = true;
+                        } else {
+                            STATE = StateFlag.ADD_SERVICE.getIndex();//如果wifi interface沒有連上表示可能資訊不夠新, 重add_service重新開始
+                            for (WifiConfiguration i : list) {
+                                wifi.removeNetwork(i.networkId);//移除所有之前wifi連線網路的設定
+                                wifi.saveConfiguration();//除存設定
+                            }
+                        }
+                        IsConnecting = false;
+                        return;
+                    }//ROLE == RoleFlag.GO.getIndex()
+                }else{//手動建立連線 //20180403 以下為test,還沒測試成功
+                    if( ROLE != RoleFlag.HYBRID.getIndex() && ROLE != RoleFlag.BRIDGE.getIndex()){
+                        Log.d("Miga","Become to bridge or hybrid");
+                        s_status="State: Become to bridge or hybrid";
+                        //become to bridge or hybrid
+                        if(Collect_record.size() == 1) {//沒有收集到其他cluster的device
+                            Log.d("Miga", "Device doesn't receive data from other devices of the other cluster. ");
+                            STATE = StateFlag.ADD_SERVICE.getIndex();
+                            return;
+                        }
+
+                        STATE = StateFlag.WAITING.getIndex();
+                        Collections.sort(Collect_record, new Step2Data_set_Comparator());//Collections根據step2的policy來排序
+                        String a;
+                        //取出排序第一個,檢查是不是自己,若是的話則不用去連別人,只須等待別人來連自己
+                        SSID = Collect_record.get(0).getSSID();
+                        if(SSID.equals(WiFiApName)){
+                            Log.d("Miga", "Step 2, I'm the best!");
+                            STATE = StateFlag.ADD_SERVICE.getIndex();
+                            return;
+                        }
+                        for (int i = 0; i < Collect_record.size(); i++) {
+                            if (!Collect_record.get(i).getROLE().equals("3")) {//對方不是BRIDGE的話則可以連線,若為BRIDGE則在選下一個
+                                if (!Collect_record.get(i).getName().equals(Cluster_Name)) {//不相等的話表示這個GO是屬於其他Cluster的,所以device可以連上他然後變成是relay連接兩個不同的cluster
+                                    SSID = Collect_record.get(i).getSSID();
+                                    key = Collect_record.get(i).getkey();
+                                    MAC = Collect_record.get(i).getMAC();
+                                    Choose_Cluster_Name = Collect_record.get(i).getName();
+                                    break;
+                                }
+                            }
+                        }
+                        if(ROLE == RoleFlag.GO.getIndex()){//GO使用wifi去連
+                            WifiInterface_Connect(SSID,key,"2");
+                            if(!mNetworkInfo.isConnected()){//Wifi沒連上,則重新連
+                                STATE = StateFlag.ADD_SERVICE.getIndex();
+                                List<WifiConfiguration> list = wifi.getConfiguredNetworks();
+                                for (WifiConfiguration i : list) {
+                                    wifi.removeNetwork(i.networkId);//移除所有之前wifi連線網路的設定
+                                    wifi.saveConfiguration();//除存設定
+                                }
+                                return;
+                            }else{//Wifi成功連線
+                                // renew service record information
+                                Cluster_Name = Choose_Cluster_Name;//將自己的Cluster_Name更新為新的GO的Cluster_Name //Miga 20180118 將自己的clusterName更新了
+                                ROLE = RoleFlag.HYBRID.getIndex();//變為HYBRID
+                                WiFiIpAddr = wifiIpAddress();//取得wifi IP address
+                                Log.d("Miga", "WiFi_Connect/ROLE:" + ROLE + " Cluster_Name:" + Cluster_Name + " wifiIpAddress:" + WiFiIpAddr);
+                                s_status = "state: WiFiIpAddress=" + WiFiIpAddr;
+                                if (!isOpenSWIAThread) {//開啟client傳送wifi ip address thread給GO
+                                    if (SendWiFiIpAddr == null) {
+                                        SendWiFiIpAddr = new SendWiFiIpAddr();
+                                        SendWiFiIpAddr.start();
+                                    }
+                                    isOpenSWIAThread = true;
+                                }
+
+                                //CheckChangeIP(WiFiIpAddr);// Miga Add 20180307. 讓client丟自己的wifi ip addr.給GO檢查,並讓GO的IPTable內有這組ip(為了讓GO進行unicast傳送訊息用)
+                                STATE = StateFlag.ADD_SERVICE.getIndex();
+                                Isconnect = true;//p2p已有人連上/被連上,目前主要是用來判斷是否可以開始進行Group內peer的計算
+                                IsP2Pconnect = true;
+                                s_status = "Connect Group time : " + Double.toString(((Calendar.getInstance().getTimeInMillis() - start_time) / 1000.0)) + " stay_time : " + Double.toString((sleep_time / 1000.0))
+                                        + " Round_Num :" + NumRound;
+                                Log.d("Miga", "Connect Group time : " + Double.toString(((Calendar.getInstance().getTimeInMillis() - start_time) / 1000.0)) + " stay_time : " + Double.toString((sleep_time / 1000.0))
+                                        + " Round_Num :" + NumRound);
+
+                            }
+                        }else if (ROLE == RoleFlag.CLIENT.getIndex()){//CLIENT使用P2P interface去連
+                            // 為了變成relay,需要先把自己的GO解除->讓要用p2p interface去連別人
+                            manager.removeGroup(channel, new WifiP2pManager.ActionListener() {
+                                @Override
+                                public void onSuccess() {
+                                    Log.d("Miga", "remove group success");
+                                }
+
+                                @Override
+                                public void onFailure(int reason) {
+                                    Log.d("Miga", "remove group fail");
+                                }
+                            });
+                            Thread.sleep(2000);
+                            sleep_time = sleep_time + 2;
+                            manager.stopPeerDiscovery(channel, new WifiP2pManager.ActionListener() {
+                                @Override
+                                public void onSuccess() {
+                                    Log.d("Miga", "stopPeerDiscovery onSuccess");
+                                    manager.discoverPeers(channel, new WifiP2pManager.ActionListener() {
+
+                                        @Override
+                                        public void onSuccess() {
+                                            Log.d("Miga", "discoverPeers onSuccess");
+                                        }
+
+                                        @Override
+                                        public void onFailure(int reasonCode) {
+                                            Log.d("Miga", "discoverPeers onFailure");
+                                        }
+                                    });
+                                }
+
+                                @Override
+                                public void onFailure(int reasonCode) {
+                                    Log.d("Wang", "stopPeerDiscovery onFailure");
+                                }
+                            });
+                            PreClusterName = Cluster_Name;
+                            Thread.sleep(5000);
+                            sleep_time = sleep_time + 5;
+
+                            WifiP2pConfig config = new WifiP2pConfig();
+                            config.deviceAddress = MAC;//設定接下來relay要連接的device的MAC address
+                            config.wps.setup = WpsInfo.PBC;
+                            config.groupOwnerIntent = 0;
+
+                            int try_num = 0;
+                            //connect_check = false;
+
+                            s_status = "State: Step 2, CLIENT associating GO, enable true:?" + MAC + " remainder #attempt:"
+                                    + try_num+ " Cluster_Name " + Choose_Cluster_Name ;
+                            Log.d("Miga", "State: Step 2, CLIENT associating GO, enable true:?" + MAC + " remainder #attempt:"
+                                    + try_num+ " Cluster_Name " + Choose_Cluster_Name);
+                            //p2p interface去連別人
+                            manager.connect(channel, config, new ActionListener() {
+                                @Override
+                                public void onSuccess() {
+                                    try {
+                                        Thread.sleep(5000);
+                                        sleep_time = sleep_time + 5;
+                                    } catch (InterruptedException e) {
+                                        // TODO Auto-generated catch block
+                                        e.printStackTrace();
+                                    }
+                                    ROLE = RoleFlag.BRIDGE.getIndex();//變為BRIDGE
+                                    //connect_check = true;
+                                    Log.d("Miga", "P2P connect Success " + " " + "Cluseter_Name " + Cluster_Name);
+                                    try {
+                                        s_status = "Connect Group time : " + Double.toString(((Calendar.getInstance().getTimeInMillis() - start_time) / 1000.0))
+                                                +  " Round_Num :" + NumRound +" peer count : " + ServalDCommand.peerCount();
+                                    } catch (ServalDFailureException e) {
+                                        // TODO Auto-generated catch block
+                                        e.printStackTrace();
+                                    }
+                                }
+
+                                @Override
+                                public void onFailure(int reason) {//p2p interface連接失敗
+                                    manager.cancelConnect(channel, new ActionListener() {
+                                        @Override
+                                        public void onSuccess() {}
+                                        public void onFailure(int reason) {}
+                                    });
+                                    Log.d("Miga", "P2P connect failure");
+                                }
+                            });
+                            try_num++;
+                            Thread.sleep(5000);
+                            sleep_time = sleep_time +5;
+                        }
+                    }
+                }//End ROLE != RoleFlag.HYBRID.getIndex() && ROLE != RoleFlag.BRIDGE.getIndex()
                 /*if( ROLE == RoleFlag.CLIENT.getIndex()){
                     Log.d("Miga","Become to bridge or hybrid");
                     s_status="State: Become to bridge or hybrid";
@@ -1018,6 +1181,90 @@ public class Control extends Service {
                 STATE = StateFlag.ADD_SERVICE.getIndex();
                 e.printStackTrace();
             }
+        }
+    }
+
+    private void WifiInterface_Connect(String SSID, String key,String StepNum){
+        try {
+            //用WIFI_INTERFACE去聯別人
+            STATE = StateFlag.WAITING.getIndex();
+            s_status = "State: Step "+StepNum+", GO choosing peer";
+            Log.d("Miga", "State: Step "+StepNum+", GO choosing peer");
+
+            if (mConnectivityManager != null) {
+                mNetworkInfo = mConnectivityManager.getNetworkInfo(ConnectivityManager.TYPE_WIFI);
+                if (mNetworkInfo != null) {
+                    if (mNetworkInfo.isConnected() == true) {//Wifi interface有連上
+                        wifi.disconnect();//斷掉wifi interface的連線,
+                        Thread.sleep(1000);
+                        sleep_time = sleep_time + 1000;
+                    }
+                }
+            }
+            List<WifiConfiguration> list = wifi.getConfiguredNetworks();
+            for (WifiConfiguration i : list) {
+                wifi.removeNetwork(i.networkId);//移除所有之前wifi連線網路的設定
+                wifi.saveConfiguration();//除存設定
+            }
+            //連上別人
+            // Try to connect Ap(連上排序第一個or第二個的裝置)
+            IsConnecting = true;//正在連線中,避免Reconnecting_Wifi繼續執行
+            WifiConfiguration wc = new WifiConfiguration();
+            s_status = "State: choosing peer done, try to associate with" + ": SSID name: " + SSID + " , passwd: " + key;
+            Log.d("Miga", "State: choosing peer done, try to associate with" + ": SSID name: " + SSID + " , passwd: " + key);
+            wc.SSID = "\"" + SSID + "\"";
+            wc.preSharedKey = "\"" + key + "\"";
+            wc.hiddenSSID = true;
+            wc.status = WifiConfiguration.Status.ENABLED;
+            wc.allowedGroupCiphers.set(WifiConfiguration.GroupCipher.TKIP);
+            wc.allowedGroupCiphers.set(WifiConfiguration.GroupCipher.CCMP);
+            wc.allowedKeyManagement.set(WifiConfiguration.KeyMgmt.WPA_PSK);
+            wc.allowedPairwiseCiphers.set(WifiConfiguration.PairwiseCipher.TKIP);
+            wc.allowedPairwiseCiphers.set(WifiConfiguration.PairwiseCipher.CCMP);
+            wc.allowedProtocols.set(WifiConfiguration.Protocol.RSN);
+            TryNum = 25;
+            //檢查我們所要連的GO是否還存在
+            wifiScanCheck = false;
+            long wifiscan_time_start = Calendar.getInstance().getTimeInMillis();
+            while (wifiScanCheck == false) {//在onCreate時有註冊一個廣播器,專門來徵測wifi scan的結果,wifi.startscan完畢後,wifiScanCheck應該會變為true
+                ;
+            }
+            sleep_time = sleep_time + Calendar.getInstance().getTimeInMillis() - wifiscan_time_start;
+            wifiScanCheck = false;
+            boolean findIsGoExist = false;
+
+            for (int i = 0; i < wifi_scan_results.size(); i++) {//檢查接下來要連上的GO還在不在,wifi_scan_results:會列出掃描到的所有AP
+                ScanResult sr = wifi_scan_results.get(i);
+                if (sr.SSID.equals(SSID)) {//去比對每一個掃描到的AP,看是不是我們要連上的GO,若是則將findIsGoExist設為true並跳出for迴圈
+                    findIsGoExist = true;
+                    break;
+                }
+            }
+            //Log.d("Miga", "WiFi_Connect/findIsGoExist : " + findIsGoExist);
+            if (findIsGoExist == false) {//若我們要連的GO不見的話,則回到ADD_SERVICE,重新再收集資料一次.20180307Miga 這裡可能要再想一下後面的流程
+                STATE = StateFlag.ADD_SERVICE.getIndex();
+                return;
+            }
+
+            //使用wifi interface連線,連上GO
+            int res = wifi.addNetwork(wc);
+            isWifiConnect = wifi.enableNetwork(res, true);//學長的temp
+            while (!mNetworkInfo.isConnected() && TryNum > 0) {//wifi interface沒成功連上,開始不斷嘗試連接
+                isWifiConnect = wifi.enableNetwork(res, true);
+                Thread.sleep(1000);
+                sleep_time = sleep_time + 1000;
+                TryNum--;
+
+                s_status = "State: associating GO, enable true:?" + isWifiConnect + " remainder #attempt:"
+                        + TryNum;
+                Log.d("Miga", "State: associating GO, enable true:?" + isWifiConnect
+                        + " remainder #attempt:" + TryNum);
+                mNetworkInfo = mConnectivityManager.getNetworkInfo(ConnectivityManager.TYPE_WIFI);
+            }//End While
+            return;
+        }
+        catch (Exception e){
+
         }
     }
 
@@ -2196,6 +2443,7 @@ public class Control extends Service {
                         if(!group.getClientList().isEmpty()){
                             ROLE = RoleFlag.GO.getIndex();
                             IsP2Pconnect=true;//p2p已有人連上/被連上,目前主要是用來判斷是否可以開始進行Group內peer的計算
+                            IsManual = true;//這個裝置是手動先連線的
                         }
 
                     }
@@ -2224,6 +2472,7 @@ public class Control extends Service {
                                  if (info.groupFormed == true) {// groupFormed: Indicates if a p2p group has been successfully formed
                                      ROLE = RoleFlag.BRIDGE.getIndex();//wifi interface已連上,且也有p2p group
                                      IsP2Pconnect=true;//p2p已有人連上/被連上,目前主要是用來判斷是否可以開始進行Group內peer的計算
+                                     IsManual = true;//這個裝置是手動先連線的
                                      Log.d("Miga", " ROLE:" + ROLE);
                                  }
                              }
@@ -2247,6 +2496,7 @@ public class Control extends Service {
                                 Log.d("Miga", "initial createGroup Success");
                                 if( ROLE == RoleFlag.CLIENT.getIndex()) {
                                     IsP2Pconnect = true;
+                                    IsManual = true;//這個裝置是手動先連線的
                                     WiFiIpAddr = wifiIpAddress();//取得wifi IP address
                                     Log.d("Miga", "Initial/ROLE:" + ROLE + "Cluster_Name:" + Cluster_Name+" wifiIpAddress:"+WiFiIpAddr);
                                     s_status="state: WiFiIpAddress="+WiFiIpAddr;

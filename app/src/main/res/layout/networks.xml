@@ -27,12 +27,15 @@
         android:layout_alignParentRight="true"
         android:text="Off" />
 
+
     <ListView
         android:id="@+id/listView"
         android:layout_width="match_parent"
         android:layout_height="fill_parent"
         android:layout_alignParentLeft="true"
+        android:layout_alignParentStart="true"
         android:layout_below="@+id/enabled"
+        android:layout_marginTop="37dp"
         android:divider="#303030"
         android:dividerHeight="1dp"></ListView>
     <ScrollView
@@ -50,4 +53,13 @@
          android:textSize="12sp"
          android:textAppearance="?android:attr/textAppearanceLarge"></TextView>
     </ScrollView>
- </RelativeLayout>
+
+    <CheckBox
+        android:id="@+id/enablestep2"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_alignParentLeft="true"
+        android:layout_alignParentStart="true"
+        android:layout_below="@+id/enabled"
+        android:text="Connection of Multi-group" />
+</RelativeLayout>

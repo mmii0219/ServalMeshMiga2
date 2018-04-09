@@ -235,6 +235,8 @@ public class Control extends Service {
     private boolean IsManual = false;
     //For Step2
     private String Choose_Cluster_Name,PreClusterName="";
+    //private int Before_Step2_RunT=0;//自動連線在進入step2之前,會先跑個2次,確保step1已完成.
+    static public boolean Step2Auto = false;
 
     public enum RoleFlag {
         NONE(0), GO(1), CLIENT(2), BRIDGE(3), HYBRID(4);//BRIDGE就是之前的RELAY, HYBRID:一邊是GO一邊是Client的身分
@@ -1390,6 +1392,9 @@ public class Control extends Service {
                 try {
                     Thread.sleep(1000);
                     sleep_time = sleep_time + 1000;
+                    /*if(Step2Auto){
+                        Log.d("Miga","Step2 Auto true!");
+                    }*/
                     if (Auto) {
                         //開啟discovery serivce的listener,來接收其他device的info
                         if(start_time == 0) {//OnCreate時將start_time=0;

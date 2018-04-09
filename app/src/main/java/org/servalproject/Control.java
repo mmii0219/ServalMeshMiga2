@@ -235,8 +235,11 @@ public class Control extends Service {
     private boolean IsManual = false;
     //For Step2
     private String Choose_Cluster_Name,PreClusterName="";
-    //private int Before_Step2_RunT=0;//自動連線在進入step2之前,會先跑個2次,確保step1已完成.
+    private int Before_Step2_RunT=0;//自動連線在進入step2之前,會先跑個2次,確保step1已完成.
     static public boolean Step2Auto = false;
+    static public long step2_start_time;
+    private long step2_total_time, step2_sleep_time=0;
+    private boolean hasclients;
 
     public enum RoleFlag {
         NONE(0), GO(1), CLIENT(2), BRIDGE(3), HYBRID(4);//BRIDGE就是之前的RELAY, HYBRID:一邊是GO一邊是Client的身分
@@ -620,7 +623,12 @@ public class Control extends Service {
                     STATE = StateFlag.ADD_SERVICE.getIndex();//再去重新加入資料並交換
                     return;
                 }
-
+                if(Step2Auto) {
+                    if (Before_Step2_RunT < 3) {//交換次數少於3次
+                        STATE = StateFlag.ADD_SERVICE.getIndex();//再去重新加入資料並交換
+                        return;
+                    }
+                }
                 Log.d("Miga", "WiFi_Connect/InfoChangeTime>=3");
                 //都沒收集到資料的話根本不會進來這個thread，所以下面的if判斷式應該不用
                 /*if (record_set.size() == 0) {//都沒蒐集到其他人的裝置,則重新再去收集資料
@@ -715,6 +723,15 @@ public class Control extends Service {
                 if (!Collect_record.contains(self)) {
                     Collect_record.add(self);
                 }
+
+                //20180409 Start For Step2
+                if(Step2Auto){
+                    if(Before_Step2_RunT >= 3 ){//交換次數少於3次
+                       Step2Connection();
+                    }
+                    return;
+                }
+                //20180409 End
 
                 if(ROLE == RoleFlag.NONE.getIndex() || ROLE == RoleFlag.GO.getIndex()) {//20180326 只有NONE和GO需去做Step1的排序, GO是為了避免被孤立因此需去做排序, NONE則是為了一開始去組intra group
                     //Collect_record進行排序來選出Group來加入
@@ -990,7 +1007,9 @@ public class Control extends Service {
                         IsConnecting = false;
                         return;
                     }//ROLE == RoleFlag.GO.getIndex()
-                }else{//手動建立連線 //20180403 以下為test,還沒測試成功
+                }/* 20180409 Start
+                  * 由於新增了Step2Connection的function，因此下面的程式碼可以註解
+                else{//手動建立連線 //20180403 以下為test,還沒測試成功
                     if( ROLE != RoleFlag.HYBRID.getIndex() && ROLE != RoleFlag.BRIDGE.getIndex()){
                         Log.d("Miga","Become to bridge or hybrid");
                         s_status="State: Become to bridge or hybrid";
@@ -1159,6 +1178,8 @@ public class Control extends Service {
                         }
                     }
                 }//End ROLE != RoleFlag.HYBRID.getIndex() && ROLE != RoleFlag.BRIDGE.getIndex()
+                * 20180409  註解 End
+                */
                 /*if( ROLE == RoleFlag.CLIENT.getIndex()){
                     Log.d("Miga","Become to bridge or hybrid");
                     s_status="State: Become to bridge or hybrid";
@@ -1192,6 +1213,193 @@ public class Control extends Service {
                 STATE = StateFlag.ADD_SERVICE.getIndex();
                 e.printStackTrace();
             }
+        }
+    }
+
+    private void Step2Connection(){
+        String SSID = null;
+        String key = null;
+        String MAC = null;
+        try {
+            if (ROLE != RoleFlag.HYBRID.getIndex() && ROLE != RoleFlag.BRIDGE.getIndex()) {
+                Log.d("Miga", "Become to bridge or hybrid");
+                s_status = "State: Become to bridge or hybrid";
+                //become to bridge or hybrid
+                if (Collect_record.size() == 1) {//沒有收集到其他cluster的device
+                    Log.d("Miga", "Device doesn't receive data from other devices of the other cluster. ");
+                    STATE = StateFlag.ADD_SERVICE.getIndex();
+                    return;
+                }
+
+                STATE = StateFlag.WAITING.getIndex();
+                Collections.sort(Collect_record, new Step2Data_set_Comparator());//Collections根據step2的policy來排序
+                int obj_num2 = 0;
+                String Collect_contain2 = "";
+                Step1Data_set tmp2;
+                for (int i = 0; i < Collect_record.size(); i++) {
+                    tmp2 = (Step1Data_set) Collect_record.get(i);
+                    Collect_contain2 = Collect_contain2 + obj_num2 + " : " + tmp2.toString() + " ";
+                    obj_num2++;
+                }
+                Log.d("Miga", "Step2Connection/Collect records contain (Step2) " + Collect_contain2);
+                String a;
+                //取出排序第一個,檢查是不是自己,若是的話則不用去連別人,只須等待別人來連自己
+                SSID = Collect_record.get(0).getSSID();
+                if (SSID.equals(WiFiApName)) {
+                    Log.d("Miga", "Step 2, I'm the best!");
+                    STATE = StateFlag.ADD_SERVICE.getIndex();
+                    return;
+                }
+                for (int i = 0; i < Collect_record.size(); i++) {
+                    if (!Collect_record.get(i).getROLE().equals("3")) {//對方不是BRIDGE的話則可以連線,若為BRIDGE則在選下一個
+                        if (!Collect_record.get(i).getName().equals(Cluster_Name)) {//不相等的話表示這個GO是屬於其他Cluster的,所以device可以連上他然後變成是relay連接兩個不同的cluster
+                            SSID = Collect_record.get(i).getSSID();
+                            key = Collect_record.get(i).getkey();
+                            MAC = Collect_record.get(i).getMAC();
+                            Choose_Cluster_Name = Collect_record.get(i).getName();
+                            break;
+                        }
+                    }
+                }
+                if (ROLE == RoleFlag.GO.getIndex()) {//GO使用wifi去連
+                    WifiInterface_Connect(SSID, key, "2");
+                    if (!mNetworkInfo.isConnected()) {//Wifi沒連上,則重新連
+                        STATE = StateFlag.ADD_SERVICE.getIndex();
+                        List<WifiConfiguration> list = wifi.getConfiguredNetworks();
+                        for (WifiConfiguration i : list) {
+                            wifi.removeNetwork(i.networkId);//移除所有之前wifi連線網路的設定
+                            wifi.saveConfiguration();//除存設定
+                        }
+                        return;
+                    } else {//Wifi成功連線
+                        // renew service record information
+                        Cluster_Name = Choose_Cluster_Name;//將自己的Cluster_Name更新為新的GO的Cluster_Name //Miga 20180118 將自己的clusterName更新了
+                        HasClient();//檢查有沒有client
+                        if(hasclients)
+                            ROLE = RoleFlag.HYBRID.getIndex();//變為HYBRID
+                        else
+                            ROLE = RoleFlag.CLIENT.getIndex();//變為CLIENT
+                        WiFiIpAddr = wifiIpAddress();//取得wifi IP address
+                        Log.d("Miga", "Step2Connection/ROLE:" + ROLE + " Cluster_Name:" + Cluster_Name + " wifiIpAddress:" + WiFiIpAddr);
+                        s_status = "state: WiFiIpAddress=" + WiFiIpAddr;
+                        if (!isOpenSWIAThread) {//開啟client傳送wifi ip address thread給GO
+                            if (SendWiFiIpAddr == null) {
+                                SendWiFiIpAddr = new SendWiFiIpAddr();
+                                SendWiFiIpAddr.start();
+                            }
+                            isOpenSWIAThread = true;
+                        }
+
+                        //CheckChangeIP(WiFiIpAddr);// Miga Add 20180307. 讓client丟自己的wifi ip addr.給GO檢查,並讓GO的IPTable內有這組ip(為了讓GO進行unicast傳送訊息用)
+                        STATE = StateFlag.ADD_SERVICE.getIndex();
+                        Isconnect = true;//p2p已有人連上/被連上,目前主要是用來判斷是否可以開始進行Group內peer的計算
+                        IsP2Pconnect = true;
+                        s_status = "Step2_Connect Group time : " + Double.toString(((Calendar.getInstance().getTimeInMillis() - step2_start_time) / 1000.0)) + " stay_time : " + Double.toString((step2_sleep_time / 1000.0))
+                                + " Round_Num :" + NumRound;
+                        Log.d("Miga", "Step2_Connect Group time : " + Double.toString(((Calendar.getInstance().getTimeInMillis() - step2_start_time) / 1000.0)) + " stay_time : " + Double.toString((step2_sleep_time / 1000.0))
+                                + " Round_Num :" + NumRound);
+                        return;
+                    }
+                } else if (ROLE == RoleFlag.CLIENT.getIndex()) {//CLIENT使用P2P interface去連
+                    // 為了變成relay,需要先把自己的GO解除->讓要用p2p interface去連別人
+                    manager.removeGroup(channel, new WifiP2pManager.ActionListener() {
+                        @Override
+                        public void onSuccess() {
+                            Log.d("Miga", "remove group success");
+                        }
+
+                        @Override
+                        public void onFailure(int reason) {
+                            Log.d("Miga", "remove group fail");
+                        }
+                    });
+                    Thread.sleep(2000);
+                    step2_sleep_time = step2_sleep_time + 2;
+                    manager.stopPeerDiscovery(channel, new WifiP2pManager.ActionListener() {
+                        @Override
+                        public void onSuccess() {
+                            Log.d("Miga", "stopPeerDiscovery onSuccess");
+                            manager.discoverPeers(channel, new WifiP2pManager.ActionListener() {
+
+                                @Override
+                                public void onSuccess() {
+                                    Log.d("Miga", "discoverPeers onSuccess");
+                                }
+
+                                @Override
+                                public void onFailure(int reasonCode) {
+                                    Log.d("Miga", "discoverPeers onFailure");
+                                }
+                            });
+                        }
+
+                        @Override
+                        public void onFailure(int reasonCode) {
+                            Log.d("Wang", "stopPeerDiscovery onFailure");
+                        }
+                    });
+                    PreClusterName = Cluster_Name;
+                    Thread.sleep(5000);
+                    step2_sleep_time = step2_sleep_time + 5;
+
+                    WifiP2pConfig config = new WifiP2pConfig();
+                    config.deviceAddress = MAC;//設定接下來relay要連接的device的MAC address
+                    config.wps.setup = WpsInfo.PBC;
+                    config.groupOwnerIntent = 0;
+
+                    int try_num = 0;
+                    //connect_check = false;
+
+                    s_status = "State: Step 2, CLIENT associating GO, enable true:?" + MAC + " remainder #attempt:"
+                            + try_num + " Cluster_Name " + Choose_Cluster_Name;
+                    Log.d("Miga", "State: Step 2, CLIENT associating GO, enable true:?" + MAC + " remainder #attempt:"
+                            + try_num + " Cluster_Name " + Choose_Cluster_Name);
+                    //p2p interface去連別人
+                    manager.connect(channel, config, new ActionListener() {
+                        @Override
+                        public void onSuccess() {
+                            try {
+                                Thread.sleep(5000);
+                                step2_sleep_time = step2_sleep_time + 5;
+                            } catch (InterruptedException e) {
+                                // TODO Auto-generated catch block
+                                e.printStackTrace();
+                            }
+                            ROLE = RoleFlag.BRIDGE.getIndex();//變為BRIDGE
+                            //connect_check = true;
+                            Log.d("Miga", "P2P connect Success " + " " + "Cluseter_Name " + Cluster_Name);
+                            try {
+                                s_status = "Connect Group time : " + Double.toString(((Calendar.getInstance().getTimeInMillis() - step2_start_time) / 1000.0))
+                                        + " Round_Num :" + NumRound + " peer count : " + ServalDCommand.peerCount();
+                            } catch (ServalDFailureException e) {
+                                // TODO Auto-generated catch block
+                                e.printStackTrace();
+                            }
+                        }
+
+                        @Override
+                        public void onFailure(int reason) {//p2p interface連接失敗
+                            manager.cancelConnect(channel, new ActionListener() {
+                                @Override
+                                public void onSuccess() {
+                                }
+
+                                public void onFailure(int reason) {
+                                }
+                            });
+                            Log.d("Miga", "P2P connect failure");
+                        }
+                    });
+                    try_num++;
+                    Thread.sleep(5000);
+                    step2_sleep_time = step2_sleep_time + 5;
+                }
+            }
+        }
+        catch (Exception e){
+            STATE = StateFlag.ADD_SERVICE.getIndex();
+            e.printStackTrace();
+            Log.d("Miga","Step2Connection Exception: " + e.toString());
         }
     }
 
@@ -1280,6 +1488,24 @@ public class Control extends Service {
         }
     }
 
+    private void HasClient(){
+
+        manager.requestGroupInfo(channel, new WifiP2pManager.GroupInfoListener() {
+            @Override
+            public void onGroupInfoAvailable(WifiP2pGroup group) {
+                if (group != null) {
+                    if(group.getClientList().isEmpty()){
+                        hasclients = false;
+                    }else{
+                        hasclients = true;
+                    }
+
+                }
+            }
+        });
+
+    }
+
     private void discoverService() {
         manager.setDnsSdResponseListeners(channel,
                 new WifiP2pManager.DnsSdServiceResponseListener() {
@@ -1321,6 +1547,9 @@ public class Control extends Service {
     private void startRegistration() {
 
         InfoChangeTime+=1;//加入新的資訊並交換過得次數
+        if(Step2Auto) {
+            Before_Step2_RunT += 1;
+        }
         //Log.d("Miga", "startRegistration/InfoChangeTime"+InfoChangeTime);
         record_re = new HashMap();
         //int peercount = count_peer();
@@ -1413,6 +1642,8 @@ public class Control extends Service {
                             // 造成一直執行 add_service_flag
                             Thread.sleep(2000);
                             sleep_time = sleep_time + 2000;
+                            if(Step2Auto)
+                                step2_sleep_time = step2_sleep_time + 2000;
                             //sleep_time = sleep_time + 2000;
                             //discoverService();
                         }
@@ -1501,11 +1732,15 @@ public class Control extends Service {
                             Thread.sleep(randomnum);
                             //Log.d("Miga","Thread sleep:"+randomnum);
                             sleep_time = sleep_time + randomnum;
+                            if(Step2Auto)
+                                step2_sleep_time = step2_sleep_time + randomnum;
                         }else{
                             int randomnum = randomWithRange(7,10)*1000;
                             Thread.sleep(randomnum);
                             //Log.d("Miga","Thread sleep:"+randomnum);
                             sleep_time = sleep_time + randomnum;
+                            if(Step2Auto)
+                                step2_sleep_time = step2_sleep_time + randomnum;
                         }
                         NumRound++;
                     }

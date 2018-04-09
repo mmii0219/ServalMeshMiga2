@@ -372,9 +372,9 @@ public class Control extends Service {
             }
 
             if (data1.getPOWER().compareTo(data2.getPOWER()) < 0) {
-                return -1;
-            } else if (data1.getPOWER().compareTo(data2.getPOWER()) > 0) {
                 return 1;
+            } else if (data1.getPOWER().compareTo(data2.getPOWER()) > 0) {
+                return -1;
             }
 
             if (data1.getMAC().compareTo(data2.getMAC()) < 0) {
@@ -737,7 +737,7 @@ public class Control extends Service {
                     Collect_contain = Collect_contain + obj_num + " : " + tmp.toString() + " ";
                     obj_num++;
                 }
-                Log.d("Miga", "WiFi_Connect/Collect records contain " + Collect_contain);
+                Log.d("Miga", "WiFi_Connect/Collect records contain (Step1) " + Collect_contain);
 
 
                 //20180323/26 新加入 End
@@ -1001,6 +1001,15 @@ public class Control extends Service {
 
                         STATE = StateFlag.WAITING.getIndex();
                         Collections.sort(Collect_record, new Step2Data_set_Comparator());//Collections根據step2的policy來排序
+                        int obj_num2 = 0;
+                        String Collect_contain2 = "";
+                        Step1Data_set tmp2;
+                        for (int i = 0; i < Collect_record.size(); i++) {
+                            tmp2 = (Step1Data_set) Collect_record.get(i);
+                            Collect_contain2 = Collect_contain2 + obj_num2 + " : " + tmp2.toString() + " ";
+                            obj_num2++;
+                        }
+                        Log.d("Miga", "WiFi_Connect/Collect records contain (Step2) " + Collect_contain2);
                         String a;
                         //取出排序第一個,檢查是不是自己,若是的話則不用去連別人,只須等待別人來連自己
                         SSID = Collect_record.get(0).getSSID();
@@ -1261,6 +1270,7 @@ public class Control extends Service {
                         + " remainder #attempt:" + TryNum);
                 mNetworkInfo = mConnectivityManager.getNetworkInfo(ConnectivityManager.TYPE_WIFI);
             }//End While
+            IsConnecting = false;
             return;
         }
         catch (Exception e){
@@ -1866,7 +1876,16 @@ public class Control extends Service {
                         if (temp[0] != null && temp[1] != null && temp[2] != null && WiFiApName != null) {
                             if (Newcompare(temp[0], WiFiApName) != 0) {//接收到的data和此裝置的SSID不同; 若A>B則reutrn 1
                                 // TTL -1
-                                temp[2] = String.valueOf(Integer.valueOf(temp[2]) - 1);//經過一個router因此-1
+                                try {
+                                    if(Integer.valueOf(temp[2].trim())>0) {
+                                        temp[2] = String.valueOf(Integer.valueOf(temp[2].trim()) - 1).trim();//經過一個router因此-1
+                                    }
+                                    //Log.d("Miga","Temp[2]:"+temp[2]);
+                                }catch (Exception e){
+                                    e.printStackTrace();
+                                    Log.d("Miga", "Receive_peer_count Exception : at temp[2] _" + e.toString());
+                                    s_status="Receive_peer_count Exception : at temp[2] _" + e.toString();
+                                }
                                 // update peer table
                                 if (Newcompare(temp[1], Cluster_Name) == 0) {//相同Cluster_Name
                                     PeerTable.put(temp[0], 10);//填入收到data的SSID(WiFiApName)
@@ -1880,36 +1899,55 @@ public class Control extends Service {
                                     //Log.v("Miga", "PeerTable:" + PeerTable);
                                     //s_status = "PeerTable:" + PeerTable;
                                 }
-                                // relay packet
-                                if (Integer.valueOf(temp[2]) > 0) {
-                                    message = temp[0] + "#" + temp[1] + "#" + temp[2];
-                                    sendds = null;
-                                    sendds = new DatagramSocket();
-                                    // unicast
-                                    iterator = IPTable.keySet().iterator();
-                                    while (iterator.hasNext()) {
-                                        tempkey = iterator.next().toString();
-                                        senddp = new DatagramPacket(message.getBytes(), message.length(),
-                                                InetAddress.getByName(tempkey), IP_port_for_peer_counting);
-                                        sendds.send(senddp);
-                                        //Log.d("Miga", "(Relay)Send the message: " + message + " to " + tempkey);
-                                        //s_status = "State : (Relay)Send the message: " + message + " to " + tempkey;
-                                    }
-                                    sendds.close();
-                                    if (ROLE == RoleFlag.HYBRID.getIndex()) {
-                                        //multicast
-                                        if (mConnectivityManager != null) {
-                                            mNetworkInfo = mConnectivityManager.getNetworkInfo(ConnectivityManager.TYPE_WIFI);
-                                            if (mNetworkInfo.isConnected()) {
-                                                multicgroup = InetAddress.getByName("224.0.0.3");//指定multicast要發送的group
-                                                multicsk = new MulticastSocket(6790);//6790: for peertable update
-                                                msgPkt = new DatagramPacket(message.getBytes(), message.length(), multicgroup, 6790);
-                                                multicsk.send(msgPkt);
-                                                //Log.v("Miga", "multicsk send message:" + message);
-                                                //s_status = "multicsk send message" + message;
+
+                                try {
+                                    // relay packet
+                                    if (Integer.valueOf(temp[2].trim()) > 0) {
+                                        message = temp[0] + "#" + temp[1] + "#" + temp[2].trim();
+                                        sendds = null;
+                                        sendds = new DatagramSocket();
+                                        try {
+                                            // unicast
+                                            iterator = IPTable.keySet().iterator();
+                                            while (iterator.hasNext()) {
+                                                tempkey = iterator.next().toString();
+                                                senddp = new DatagramPacket(message.getBytes(), message.length(),
+                                                        InetAddress.getByName(tempkey), IP_port_for_peer_counting);
+                                                sendds.send(senddp);
+                                                //Log.d("Miga", "(Relay)Send the message: " + message + " to " + tempkey);
+                                                //s_status = "State : (Relay)Send the message: " + message + " to " + tempkey;
                                             }
+                                            sendds.close();
+                                        } catch (Exception e) {
+                                            e.printStackTrace();
+                                            Log.d("Miga", "Receive_peer_count Exception : at relay pkt (unicast) _" + e.toString());
+                                            s_status = "Receive_peer_count Exception : at relay pkt (unicast) _" + e.toString();
+                                        }
+                                        try {
+                                            if (ROLE == RoleFlag.HYBRID.getIndex()) {
+                                                //multicast
+                                                if (mConnectivityManager != null) {
+                                                    mNetworkInfo = mConnectivityManager.getNetworkInfo(ConnectivityManager.TYPE_WIFI);
+                                                    if (mNetworkInfo.isConnected()) {
+                                                        multicgroup = InetAddress.getByName("224.0.0.3");//指定multicast要發送的group
+                                                        multicsk = new MulticastSocket(6790);//6790: for peertable update
+                                                        msgPkt = new DatagramPacket(message.getBytes(), message.length(), multicgroup, 6790);
+                                                        multicsk.send(msgPkt);
+                                                        //Log.v("Miga", "multicsk send message:" + message);
+                                                        //s_status = "multicsk send message" + message;
+                                                    }
+                                                }
+                                            }
+                                        } catch (Exception e) {
+                                            e.printStackTrace();
+                                            Log.d("Miga", "Receive_peer_count Exception : at relay pkt (multicast) _" + e.toString());
+                                            s_status = "Receive_peer_count Exception : at relay pkt (multicast) _" + e.toString();
                                         }
                                     }
+                                }catch (Exception e){
+                                    e.printStackTrace();
+                                    Log.d("Miga", "Receive_peer_count Exception : // relay packet _" + e.toString());
+                                    s_status = "Receive_peer_count Exception : // relay packet _" + e.toString();
                                 }
                             }
                         }

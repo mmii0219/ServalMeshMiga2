@@ -1301,6 +1301,11 @@ public class Control extends Service {
                         return;
                     }
                 } else if (ROLE == RoleFlag.CLIENT.getIndex()) {//CLIENT使用P2P interface去連
+                    if (MAC.equals(GO_mac)) {//可能是因為GO_mac和接下來要連接的cluster內的GO是一樣的,所以連了也沒用(因為已經連了，且連了也無法multi group)
+                        Log.d("Miga", "MAC.equals(GO_mac)");
+                        STATE = StateFlag.ADD_SERVICE.getIndex();
+                        return;
+                    }
                     // 為了變成relay,需要先把自己的GO解除->讓要用p2p interface去連別人
                     manager.removeGroup(channel, new WifiP2pManager.ActionListener() {
                         @Override
@@ -1366,6 +1371,7 @@ public class Control extends Service {
                                 e.printStackTrace();
                             }
                             ROLE = RoleFlag.BRIDGE.getIndex();//變為BRIDGE
+                            Cluster_Name = Choose_Cluster_Name;
                             //connect_check = true;
                             Log.d("Miga", "P2P connect Success " + " " + "Cluseter_Name " + Cluster_Name);
                             try {
@@ -1393,6 +1399,8 @@ public class Control extends Service {
                     try_num++;
                     Thread.sleep(5000);
                     step2_sleep_time = step2_sleep_time + 5;
+                    STATE = StateFlag.ADD_SERVICE.getIndex();
+                    return;
                 }
             }
         }
@@ -2164,7 +2172,7 @@ public class Control extends Service {
                                             s_status = "Receive_peer_count Exception : at relay pkt (unicast) _" + e.toString();
                                         }
                                         try {
-                                            if (ROLE == RoleFlag.HYBRID.getIndex()) {
+                                            if (ROLE == RoleFlag.HYBRID.getIndex()|| ROLE == RoleFlag.BRIDGE.getIndex()) {
                                                 //multicast
                                                 if (mConnectivityManager != null) {
                                                     mNetworkInfo = mConnectivityManager.getNetworkInfo(ConnectivityManager.TYPE_WIFI);
@@ -2225,7 +2233,7 @@ public class Control extends Service {
                 while(true) {
                     if (IsP2Pconnect) {
                         if (receivedpkt_pc != null) {
-                            if (ROLE == RoleFlag.CLIENT.getIndex() || ROLE == RoleFlag.HYBRID.getIndex()) {
+                            if (ROLE == RoleFlag.CLIENT.getIndex() || ROLE == RoleFlag.HYBRID.getIndex()|| ROLE == RoleFlag.BRIDGE.getIndex()) {
                                 //unicast
                                 receivedskt_pc.receive(receivedpkt_pc);//把接收到的data存在receivedp.
                                 RecvMsg_pc = new String(lMsg_pc, 0, receivedpkt_pc.getLength());//將接收到的IMsg轉換成String型態
@@ -2311,6 +2319,11 @@ public class Control extends Service {
                             //s_status="I send unicast message:"+message;
 
                         }
+                        //for bridge
+                        dp = new DatagramPacket(message.getBytes(), message.length(),
+                                InetAddress.getByName("192.168.49.1"), IP_port_for_peer_counting);
+                        sendds.send(dp);//傳給GO
+
 
                         //multicast
                         if (mConnectivityManager != null) {
@@ -2393,6 +2406,21 @@ public class Control extends Service {
                             //s_status="I send unicast message:"+message;
 
                         }
+                        //20180410For BRIDGE,HYBRID傳送CN
+                        //multicast
+                        if( ROLE == RoleFlag.BRIDGE.getIndex() || ROLE == RoleFlag.HYBRID.getIndex()) {
+                            if (mConnectivityManager != null) {
+                                mNetworkInfo = mConnectivityManager.getNetworkInfo(ConnectivityManager.TYPE_WIFI);
+                                if (mNetworkInfo.isConnected()) {
+                                    multicgroup = InetAddress.getByName("224.0.0.3");//指定multicast要發送的group
+                                    multicsk = new MulticastSocket(6791);//6790: for CN update
+                                    msgPkt = new DatagramPacket(message.getBytes(), message.length(), multicgroup, 6791);
+                                    multicsk.send(msgPkt);
+                                    //Log.v("Miga", "multicsk send message:" + message);
+                                    //s_status = "multicsk send message" + message;
+                                }
+                            }
+                        }
                     }
                     Thread.sleep(1000);
                 }
@@ -2466,13 +2494,21 @@ public class Control extends Service {
                         }
                         if(notnull){
                             if (Newcompare(temp[0], WiFiApName) != 0) {//接收到的不是自己的
-                                if(!IsInitial){//手動設定的device還沒進CN更新,加入這個主要是讓非手動的device近來更新
+
+                                if(!IsInitial){//手動設定的device還沒進CN更新,加入這個主要是讓非手動的device近來更新-> 20180410應該是讓手動的device近來更新
                                     if (ROLE == RoleFlag.CLIENT.getIndex()) {
                                         if (Integer.valueOf(temp[2]) == RoleFlag.GO.getIndex()) {//接收到的是GO傳來的
                                             if (!IsReceiveGoInfo) {//且還沒接收過GO的Info
                                                 Cluster_Name = temp[1];
                                                 IsReceiveGoInfo = true;//已接收過GO的
                                             }
+                                        }
+                                    }
+                                }//還需要再寫一個自動的device更新CN
+                                else{
+                                    if (Integer.valueOf(temp[2]) == RoleFlag.HYBRID.getIndex() || Integer.valueOf(temp[2]) == RoleFlag.BRIDGE.getIndex()) {//接收到的是HY,BR傳來的
+                                        if (!Cluster_Name.equals(temp[1])) {//傳送過來的CN不相同
+                                            Cluster_Name = temp[1];
                                         }
                                     }
                                 }
@@ -2560,7 +2596,7 @@ public class Control extends Service {
                 while(true) {
                     if (IsP2Pconnect) {
                         if (receivedpkt_cn != null) {
-                            if (ROLE == RoleFlag.CLIENT.getIndex() || ROLE == RoleFlag.HYBRID.getIndex()) {
+                            if (ROLE == RoleFlag.CLIENT.getIndex() || ROLE == RoleFlag.HYBRID.getIndex() || ROLE == RoleFlag.BRIDGE.getIndex()) {
                                 //unicast
                                 receivedskt_cn.receive(receivedpkt_cn);//把接收到的data存在receivedp.
                                 RecvMsg_cn = new String(lMsg_cn, 0, receivedpkt_cn.getLength());//將接收到的IMsg轉換成String型態

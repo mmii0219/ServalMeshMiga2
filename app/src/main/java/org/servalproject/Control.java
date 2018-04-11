@@ -143,6 +143,7 @@ public class Control extends Service {
     private static int IP_port_for_IPSave = 2555;
     private static int IP_port_for_peer_counting = 2666;
     private static int IP_port_for_cluster_name = 2777;
+    private static int IP_port_for_can_connect = 2888;//Step2
     private ServerSocket ss = null;
     private Map<String, Integer> IPTable = new HashMap<String, Integer>();
     private Map<String, Integer> PeerTable = new HashMap<String, Integer>();
@@ -202,6 +203,7 @@ public class Control extends Service {
     private MulticastSocket recvSocket;//Miga , for ip table
     private MulticastSocket recvPeerSocket;//Miga , for peer table
     private MulticastSocket recvCNSocket;//Miga , for Cluster Name
+    private MulticastSocket recvCCSocket;//Miga , for CanIConnect,確認是否可在step2進行連線
     private InetAddress multicgroup;
     //for multicast socket End add by Miga
     private boolean IsConnecting=false;
@@ -240,6 +242,15 @@ public class Control extends Service {
     static public long step2_start_time;
     private long step2_total_time, step2_sleep_time=0;
     private boolean hasclients;
+    //For Step2 該group目前要進行連線的CN名稱
+    private Thread t_CanConnect = null;
+    private Thread t_CanConnect_uni = null;
+    private Thread t_CanConnect_multi = null;
+    private byte[] lMsg_cc;
+    private DatagramPacket receivedpkt_cc;
+    private DatagramSocket receivedskt_cc;//unicast
+    private String RecvMsg_cc="";
+    private Map<String, Integer> CNTable = new HashMap<String, Integer>();
 
     public enum RoleFlag {
         NONE(0), GO(1), CLIENT(2), BRIDGE(3), HYBRID(4);//BRIDGE就是之前的RELAY, HYBRID:一邊是GO一邊是Client的身分
@@ -1262,8 +1273,8 @@ public class Control extends Service {
                     }
                 }
                 if (ROLE == RoleFlag.GO.getIndex()) {//GO使用wifi去連
-                    WifiInterface_Connect(SSID, key, "2");
-                    if (!mNetworkInfo.isConnected()) {//Wifi沒連上,則重新連
+                    WifiInterface_Connect(SSID, key, "2",Choose_Cluster_Name);
+                    if (!mNetworkInfo.isConnected()) {//Wifi沒連上
                         STATE = StateFlag.ADD_SERVICE.getIndex();
                         List<WifiConfiguration> list = wifi.getConfiguredNetworks();
                         for (WifiConfiguration i : list) {
@@ -1274,21 +1285,21 @@ public class Control extends Service {
                     } else {//Wifi成功連線
                         // renew service record information
                         Cluster_Name = Choose_Cluster_Name;//將自己的Cluster_Name更新為新的GO的Cluster_Name //Miga 20180118 將自己的clusterName更新了
-                        HasClient();//檢查有沒有client
-                        if(hasclients)
+                        //HasClient();//檢查有沒有client
+                        //if(hasclients)
                             ROLE = RoleFlag.HYBRID.getIndex();//變為HYBRID
-                        else
-                            ROLE = RoleFlag.CLIENT.getIndex();//變為CLIENT
+                        //else
+                        //    ROLE = RoleFlag.CLIENT.getIndex();//變為CLIENT
                         WiFiIpAddr = wifiIpAddress();//取得wifi IP address
                         Log.d("Miga", "Step2Connection/ROLE:" + ROLE + " Cluster_Name:" + Cluster_Name + " wifiIpAddress:" + WiFiIpAddr);
                         s_status = "state: WiFiIpAddress=" + WiFiIpAddr;
-                        if (!isOpenSWIAThread) {//開啟client傳送wifi ip address thread給GO
+                        //if (!isOpenSWIAThread) {//開啟client傳送wifi ip address thread給GO
                             if (SendWiFiIpAddr == null) {
                                 SendWiFiIpAddr = new SendWiFiIpAddr();
                                 SendWiFiIpAddr.start();
                             }
-                            isOpenSWIAThread = true;
-                        }
+                        //    isOpenSWIAThread = true;
+                        //}
 
                         //CheckChangeIP(WiFiIpAddr);// Miga Add 20180307. 讓client丟自己的wifi ip addr.給GO檢查,並讓GO的IPTable內有這組ip(為了讓GO進行unicast傳送訊息用)
                         STATE = StateFlag.ADD_SERVICE.getIndex();
@@ -1301,11 +1312,32 @@ public class Control extends Service {
                         return;
                     }
                 } else if (ROLE == RoleFlag.CLIENT.getIndex()) {//CLIENT使用P2P interface去連
+                    String canIconnects="";
                     if (MAC.equals(GO_mac)) {//可能是因為GO_mac和接下來要連接的cluster內的GO是一樣的,所以連了也沒用(因為已經連了，且連了也無法multi group)
                         Log.d("Miga", "MAC.equals(GO_mac)");
                         STATE = StateFlag.ADD_SERVICE.getIndex();
                         return;
                     }
+                    canIconnects=CanIConnect(Choose_Cluster_Name);
+                    if(canIconnects.equals("NO")){//同個group內已經有其他裝置連該CN了
+                        Log.d("Miga", "Client can not connect!");
+                        STATE = StateFlag.ADD_SERVICE.getIndex();
+                        return;
+                    }
+                    /*boolean continuerun=false;
+                    while (!continuerun){
+                        if(canIconnects.equals("NotReceive")){//Client傳送過去的資訊GO沒有收到,因此需再繼續重新傳送,等到GO回復
+                            Log.d("Miga", "canIconnects.equals=NotReceive");
+                            canIconnects=CanIConnect(Choose_Cluster_Name);
+                        }else if (canIconnects.equals("OK")){
+                            continuerun=true;
+                            break;
+                        }else if (canIconnects.equals("NO")){
+                            Log.d("Miga", "Client can not connect!");
+                            STATE = StateFlag.ADD_SERVICE.getIndex();
+                            return;
+                        }
+                    }*/
                     // 為了變成relay,需要先把自己的GO解除->讓要用p2p interface去連別人
                     manager.removeGroup(channel, new WifiP2pManager.ActionListener() {
                         @Override
@@ -1355,15 +1387,19 @@ public class Control extends Service {
                     int try_num = 0;
                     //connect_check = false;
 
-                    s_status = "State: Step 2, CLIENT associating GO, enable true:?" + MAC + " remainder #attempt:"
+                    s_status = "State: Step 2, CLIENT associating GO, enable true:?" + SSID + " remainder #attempt:"
                             + try_num + " Cluster_Name " + Choose_Cluster_Name;
-                    Log.d("Miga", "State: Step 2, CLIENT associating GO, enable true:?" + MAC + " remainder #attempt:"
+                    Log.d("Miga", "State: Step 2, CLIENT associating GO, enable true:?" + SSID + " remainder #attempt:"
                             + try_num + " Cluster_Name " + Choose_Cluster_Name);
                     //p2p interface去連別人
                     manager.connect(channel, config, new ActionListener() {
                         @Override
                         public void onSuccess() {
                             try {
+                                //傳送info給GO讓GO知道我的p2p ip address
+                                //20180411 BRIDGE的IP傳送是利用send_peer_count時的unicast傳給49.1時，
+                                //等到GO在receive_peer_count接收到BRIDGE傳來的pkt時，可以抓取傳送該pkt的ip address
+                                //GO在將之儲存於他的IPTable，讓兩個GROUP可以順利溝通
                                 Thread.sleep(5000);
                                 step2_sleep_time = step2_sleep_time + 5;
                             } catch (InterruptedException e) {
@@ -1411,10 +1447,19 @@ public class Control extends Service {
         }
     }
 
-    private void WifiInterface_Connect(String SSID, String key,String StepNum){
+    private void WifiInterface_Connect(String SSID, String key,String StepNum,String Want_Cluster_Name){
         try {
             //用WIFI_INTERFACE去聯別人
             STATE = StateFlag.WAITING.getIndex();
+            //GO確認自己能不能連上別人
+            if(StepNum.equals("2")) {
+                if(!CanGOConnect(Want_Cluster_Name)){//CNTable已經有這個CN了，所以GO不能連線
+                    STATE = StateFlag.ADD_SERVICE.getIndex();
+                    return;
+                }
+            }
+
+
             s_status = "State: Step "+StepNum+", GO choosing peer";
             Log.d("Miga", "State: Step "+StepNum+", GO choosing peer");
 
@@ -1513,6 +1558,155 @@ public class Control extends Service {
         });
 
     }
+    //For GO確認自己是否可以進行連線
+    private boolean CanGOConnect(String WantConnectCN){
+        if(CNTable.containsKey(WantConnectCN)){
+            Log.d("Miga","GO Can not connect to: "+WantConnectCN+" ,CNTable = "+CNTable);
+            return false;
+        }else{
+            CNTable.put(WantConnectCN,0);
+            Log.d("Miga","GO Can connect to: "+WantConnectCN+" ,Put CNTable = "+CNTable);
+            return true;
+        }
+    }
+    //For Client呼叫此function傳送連線info
+    private String CanIConnect(String WantConnectCN){
+        String message="",recmessage="";
+        Iterator iterator;
+        MulticastSocket multicsk;//Miga20180313
+        DatagramPacket msgPkt;//Miga
+
+
+        byte[] bcMsg;
+        boolean isSuccessSend=false;
+        DatagramPacket dgpkt;//unicast
+        DatagramSocket dgskt;//unicast
+        try{
+            bcMsg = new byte[8192];
+            dgpkt = new DatagramPacket(bcMsg, bcMsg.length);
+            dgskt = new DatagramSocket(IP_port_for_can_connect);
+            if (IsP2Pconnect) {
+                message = WiFiApName +"#"+ WiFiIpAddr + "#" + WantConnectCN;
+                //multicast
+                if (mConnectivityManager != null) {
+                    mNetworkInfo = mConnectivityManager.getNetworkInfo(ConnectivityManager.TYPE_WIFI);
+                    if (mNetworkInfo.isConnected()) {
+                        multicgroup = InetAddress.getByName("224.0.0.3");//指定multicast要發送的group
+                        multicsk = new MulticastSocket(6792);//6790: for peertable update
+                        msgPkt = new DatagramPacket(message.getBytes(), message.length(), multicgroup, 6792);
+                        multicsk.send(msgPkt);
+                        Log.v("Miga", "CanIConnect multicsk send message:" + message);
+                        s_status = "CanIConnect multicsk send message" + message;
+
+                        if(dgpkt != null){
+                            dgskt.receive(dgpkt);
+                            recmessage = new String(bcMsg, 0 , dgpkt.getLength());
+                            //Log.d("Miga","Client get GO's msg:"+recmessage);
+                            if(recmessage.equals("OK")) {//recmessage=="IpReceive" ,用==是比較物件, 在這裡字串比較應該用str.equals(str2);比較好
+                                Log.d("Miga","Client get GO's msg: OK");
+                                return "OK";
+                            }else if(recmessage.equals("NO")){
+                                Log.d("Miga","Client get GO's msg: NO");
+                                return "NO";
+                            }
+                            else{
+                                Log.d("Miga","Client get GO's msg: NotReceive");
+                                return "NotReceive";
+                            }
+                        }
+                    }
+                }
+                Log.d("Miga","Client get GO's msg: NotReceive");
+                return "NotReceive";//還沒接收到GO回傳的
+            }
+        }catch(Exception e){
+            e.printStackTrace();
+            Log.d("Miga","CanIConnect Exception"+e.toString());
+        }
+        Log.d("Miga","Client get GO's msg: NotReceive");
+        return "NotReceive";
+    }
+    //For Go確認是否client可以進行連線
+    public class CanConnect extends Thread{
+        private PrintWriter out;
+        private String recMessagetemp,recWantCN, temp, sendbackmessage;
+        private String[] recMessage;
+        private int i,PreROLE;
+        //private MulticastSocket clientSocket;//Miga
+        private DatagramPacket msgPkt;//Miga
+        private boolean isJoin=false;
+        private ServerSocket ss = null;
+        private DatagramPacket dgpacket = null;
+        private DatagramSocket dgsocket = null;
+        public void run() {
+            try {
+                lMsg_cc = new byte[8192];
+                receivedpkt_cc = new DatagramPacket(lMsg_cc, lMsg_cc.length);//接收到的message會存在IMsg//回傳使用 unicast
+                dgsocket = new DatagramSocket();
+                //Miga add multicast 20180309 (接收使用multicast)
+                byte[] buf=new byte[256];
+
+                while(true){
+                    //讀取數據
+                    msgPkt=new DatagramPacket(buf, buf.length);
+
+                    if(msgPkt!=null){
+                        recvCCSocket.receive(msgPkt);
+                        recMessagetemp=new String(buf, 0, msgPkt.getLength());
+                        recMessage = recMessagetemp.split("#");//[0]:WiFiApName(SSID),[1]:傳送過來的IP address [2]: 想連的CN名稱
+                        recWantCN=recMessage[2];
+                        if(!(recMessage[0].equals(WiFiApName))) {//接收到的不是自己,則可以進行IP判斷
+                            //Log.d("Miga", "I got multicast message from:" + recMessagetemp);
+                            //s_status = "I got multicast message from:" + recMessagetemp;
+                            if (CNTable.containsKey(recWantCN)) {//已經在CNTable內了，表示GO或是其他member已經要連了
+                                sendbackmessage = "NO";
+                                s_status="Has in CNTable " + CNTable;
+                                Log.d("Miga", "Client ask, CanConnect/ Has in CNTable: " + CNTable);
+                            } else {
+                                sendbackmessage = "OK";
+                                CNTable.put(recWantCN, 0);
+                                //for test
+                                s_status="Put in CNTable " + CNTable;
+                                Log.d("Miga", "Client ask, CanConnect/ Put in CNTable: " + CNTable);
+                            }
+                            //unicast 回傳到該wifi ip address,及該port
+                            dgpacket = new DatagramPacket(sendbackmessage.getBytes(), sendbackmessage.length(), InetAddress.getByName(recMessage[1]),IP_port_for_can_connect);
+                            dgsocket.send(dgpacket);
+
+                            Log.d("Miga", "GO send CanIConnect msg to client: "+recMessage[1]+", " + sendbackmessage);
+                        }
+
+                    }
+
+                }
+
+            } catch (Exception e) {
+                e.printStackTrace();
+                Log.d("Miga", "CollectIP_server Exception" + e.toString());
+            } finally {
+
+            }
+        }
+    }
+
+    //取得p2p ip address
+    public static String getLocalIpAddress() {
+        try {
+            for (Enumeration<NetworkInterface> en = NetworkInterface.getNetworkInterfaces(); en.hasMoreElements();) {
+                NetworkInterface intf = en.nextElement();
+                for (Enumeration<InetAddress> enumIpAddr = intf.getInetAddresses(); enumIpAddr.hasMoreElements();) {
+                    InetAddress inetAddress = enumIpAddr.nextElement();
+                    if (!inetAddress.isLoopbackAddress() && inetAddress instanceof Inet4Address) {
+                        return inetAddress.getHostAddress();
+                    }
+                }
+            }
+        } catch (SocketException ex) {
+            ex.printStackTrace();
+        }
+        return null;
+    }
+
 
     private void discoverService() {
         manager.setDnsSdResponseListeners(channel,
@@ -2082,6 +2276,19 @@ public class Control extends Service {
             Log.d("Miga", "JoinUpdatePeerMultiCst Exception:" + e);
         }
     }
+    //加入確認step2是否可連線的 multicast, 於Initial()呼叫
+    public void JoinUpdateCCMultiCst(){
+
+        try {
+            recvCCSocket = new MulticastSocket(6792);
+            multicgroup = InetAddress.getByName("224.0.0.3"); //客戶客戶端將自己加入到指定的multicast group中,這樣就能夠收到來自該組的消息
+            recvCCSocket.joinGroup(new InetSocketAddress(multicgroup, 6792), p2p0);//用p2p0 interface來接收muticast pkt
+            Log.d("Miga", "I join CC multicast group success" + multicgroup);
+
+        }catch (Exception e){
+            Log.d("Miga", "JoinUpdateCCMultiCst Exception:" + e);
+        }
+    }
     // Miga, For multicast ------------End-------------
 
     //20180314 可成功使用multi, uni接收並relay(GO) pkt出去
@@ -2099,6 +2306,7 @@ public class Control extends Service {
         private String[] recMessage;
         private int i;
         private DatagramPacket msgPkt;//Miga
+        private boolean isreceiveformbridge=false;
 
 
         public void run() {
@@ -2120,9 +2328,26 @@ public class Control extends Service {
 
                 while(true){
                     if(RecvMsg_pc!="") {
-                        temp = RecvMsg_pc.split("#");//將message之中有#則分開存到tmep陣列裡;message = WiFiApName + "#" + Cluster_Name + "#" + "5";
+                        temp = RecvMsg_pc.split("#");//將message之中有#則分開存到tmep陣列裡;message = WiFiApName + "#" + Cluster_Name + "#" + "5"+ "#" +ROLE;
                         if (temp[0] != null && temp[1] != null && temp[2] != null && WiFiApName != null) {
                             if (Newcompare(temp[0], WiFiApName) != 0) {//接收到的data和此裝置的SSID不同; 若A>B則reutrn 1
+                                if(!isreceiveformbridge) {//還沒從bridge接收到ip
+                                    if (temp.length == 4) {//表示有temp3
+                                        //接收到的info事由BRIDGE傳來的，則將此ip存到自己的IPTable
+                                        if (Integer.valueOf(temp[3]) == RoleFlag.BRIDGE.getIndex()) {
+                                            InetAddress P2PIPAddress = receivedpkt_pc.getAddress();
+                                            String bridgeip = P2PIPAddress.toString().split("/")[1];//接收BRIDGE的IP
+                                            //Log.d("Miga", "Receive ip form BRIDGE: " + bridgeip);
+                                            //s_status = "Receive ip form BRIDGE: " + bridgeip;
+                                            if (!IPTable.containsKey(bridgeip)) {
+                                                IPTable.put(bridgeip, 0);
+                                                Log.d("Miga", "IPTable: " + IPTable);
+                                                s_status = "IPTable: " + IPTable;
+                                                isreceiveformbridge=true;//已經從bridge那邊接收過了，因此不需要再存ip了
+                                            }
+                                        }
+                                    }
+                                }
                                 // TTL -1
                                 try {
                                     if(Integer.valueOf(temp[2].trim())>0) {
@@ -2135,7 +2360,7 @@ public class Control extends Service {
                                     s_status="Receive_peer_count Exception : at temp[2] _" + e.toString();
                                 }
                                 // update peer table
-                                if (Newcompare(temp[1], Cluster_Name) == 0) {//相同Cluster_Name
+                                //if (Newcompare(temp[1], Cluster_Name) == 0) {//相同Cluster_Name
                                     PeerTable.put(temp[0], 10);//填入收到data的SSID(WiFiApName)
                                     if (count_peer() + 1 != pre_peer_count) {
                                         pre_peer_count = count_peer() + 1;//更新現在PeerTable內有幾個Peer
@@ -2146,7 +2371,7 @@ public class Control extends Service {
                                     }
                                     //Log.v("Miga", "PeerTable:" + PeerTable);
                                     //s_status = "PeerTable:" + PeerTable;
-                                }
+                                //}
 
                                 try {
                                     // relay packet
@@ -2233,13 +2458,14 @@ public class Control extends Service {
                 while(true) {
                     if (IsP2Pconnect) {
                         if (receivedpkt_pc != null) {
-                            if (ROLE == RoleFlag.CLIENT.getIndex() || ROLE == RoleFlag.HYBRID.getIndex()|| ROLE == RoleFlag.BRIDGE.getIndex()) {
+                            //20180411註解下面，因為ROLE==GO時也會用unicast接收
+                            //if (ROLE == RoleFlag.CLIENT.getIndex() || ROLE == RoleFlag.HYBRID.getIndex()|| ROLE == RoleFlag.BRIDGE.getIndex()) {
                                 //unicast
                                 receivedskt_pc.receive(receivedpkt_pc);//把接收到的data存在receivedp.
                                 RecvMsg_pc = new String(lMsg_pc, 0, receivedpkt_pc.getLength());//將接收到的IMsg轉換成String型態
                                 //Log.d("Miga", "I got message from unicast" + message);
                                 //s_status = "I got message from unicast" + message;
-                            }
+                            //}
                         }
                     }
                 }
@@ -2319,11 +2545,15 @@ public class Control extends Service {
                             //s_status="I send unicast message:"+message;
 
                         }
-                        //for bridge
-                        dp = new DatagramPacket(message.getBytes(), message.length(),
-                                InetAddress.getByName("192.168.49.1"), IP_port_for_peer_counting);
-                        sendds.send(dp);//傳給GO
+                        if(ROLE == RoleFlag.BRIDGE.getIndex()) {
+                            //for bridge
+                            message = WiFiApName + "#" + Cluster_Name + "#" + "5"+"#"+ROLE;// 0: source SSID 1: cluster name 2: TTL 3:ROLE
+                            dp = new DatagramPacket(message.getBytes(), message.length(),
+                                    InetAddress.getByName("192.168.49.1"), IP_port_for_peer_counting);
+                            sendds.send(dp);//傳給GO
+                        }
 
+                        message = WiFiApName + "#" + Cluster_Name + "#" + "5";// 0: source SSID 1: cluster name 2: TTL
 
                         //multicast
                         if (mConnectivityManager != null) {
@@ -2743,6 +2973,7 @@ public class Control extends Service {
             JoinUpdateIPMultiCst();//加入multicast group,為了讓GO來接收連上他的client向他傳送的ip address(ip用來更新IPTable)
             JoinUpdatePeerMultiCst();//加入multicast group,為了讓所有member來更新peer table
             JoinUpdateCNMultiCst();//加入更新的Cluster Name multicast,為了讓手動建立的role更新CN
+            JoinUpdateCCMultiCst();//用來讓Client在Step2傳送欲連線的info給GO
             ROLE = RoleFlag.NONE.getIndex();
 
             manager.requestGroupInfo(channel, new WifiP2pManager.GroupInfoListener() {
@@ -3033,6 +3264,11 @@ public class Control extends Service {
         if (t_receive_peer_count == null) {
             t_receive_peer_count = new Receive_peer_count();
             t_receive_peer_count.start();
+        }
+
+        if(t_CanConnect == null){
+            t_CanConnect = new CanConnect();
+            t_CanConnect.start();
         }
 
 

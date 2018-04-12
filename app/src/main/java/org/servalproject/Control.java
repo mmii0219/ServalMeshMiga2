@@ -185,7 +185,7 @@ public class Control extends Service {
     private int peercount, InfoChangeTime,discoverpeernum, grouppeer =0;
     private boolean writeLog=false,isCheck=false, isOpenSWIAThread=false;
     private int ExpDeviceNum=3;//目前要測試的裝置數量,有2-6隻
-    private String GO_mac;
+    private String GO_mac,GO_SSID;
     private Thread initial = null;
     private Thread CheckWhichGroup = null;
     private Thread SendWiFiIpAddr = null;
@@ -787,6 +787,7 @@ public class Control extends Service {
                                     Isconnect = true;
                                     IsP2Pconnect = true;//p2p已有人連上/被連上,目前主要是用來判斷是否可以開始進行Group內peer的計算
                                     CNTable.put(Cluster_Name,0);//將自己的CN放入CNTable
+                                    GO_mac = MAC;
                                     return;
                                 } else {//連上別人
                                     // Try to connect Ap(連上排序第一個or第二個的裝置)
@@ -869,6 +870,7 @@ public class Control extends Service {
                                         STATE = StateFlag.ADD_SERVICE.getIndex();
                                         Isconnect = true;
                                         IsP2Pconnect = true;//p2p已有人連上/被連上,目前主要是用來判斷是否可以開始進行Group內peer的計算
+                                        GO_mac = MAC;
                                         //isCheck = true;//檢查完畢
                                     } else {
                                         STATE = StateFlag.ADD_SERVICE.getIndex();//如果wifi interface沒有連上表示可能資訊不夠新, 重add_service重新開始
@@ -1314,14 +1316,17 @@ public class Control extends Service {
                     }
                 } else if (ROLE == RoleFlag.CLIENT.getIndex()) {//CLIENT使用P2P interface去連
                     String canIconnects="";
-                    if (MAC.equals(GO_mac)) {//可能是因為GO_mac和接下來要連接的cluster內的GO是一樣的,所以連了也沒用(因為已經連了，且連了也無法multi group)
-                        Log.d("Miga", "MAC.equals(GO_mac)");
+                    if (MAC.equals(GO_mac)||SSID.equals(GO_SSID)) {//可能是因為GO_mac和接下來要連接的cluster內的GO是一樣的,所以連了也沒用(因為已經連了，且連了也無法multi group)
+                        Log.d("Miga", "MAC.equals(GO_mac)||SSID.equals(GO_SSID)");
                         STATE = StateFlag.ADD_SERVICE.getIndex();
                         return;
                     }
                     canIconnects=CanIConnect(Choose_Cluster_Name);
                     if(canIconnects.equals("NO")){//同個group內已經有其他裝置連該CN了
                         Log.d("Miga", "Client can not connect!");
+                        STATE = StateFlag.ADD_SERVICE.getIndex();
+                        return;
+                    }else if(canIconnects.equals("NotReceive")){
                         STATE = StateFlag.ADD_SERVICE.getIndex();
                         return;
                     }
@@ -2309,6 +2314,7 @@ public class Control extends Service {
         private int i;
         private DatagramPacket msgPkt;//Miga
         private boolean isreceiveformbridge=false;
+        private boolean GO_SSID_update = false;
 
 
         public void run() {
@@ -2350,8 +2356,24 @@ public class Control extends Service {
                                         }
                                     }
                                 }
-                                //Log.d("Miga", "I got message from unicast" + message);
-                                //s_status = "I got message from unicast" + message;
+                                //Log.d("Miga", "I got message from unicast" + RecvMsg_pc);
+                                //s_status = "I got message from unicast" + RecvMsg_pc;
+
+                                //讓CLIENT更新GO_SSID
+                                if(!GO_SSID_update) {
+                                    if (ROLE == RoleFlag.CLIENT.getIndex()) {
+                                        InetAddress WiFiIPAddress = receivedpkt_pc.getAddress();
+                                        String GOip = WiFiIPAddress.toString().split("/")[1];//接收CLIENT的IP
+                                        //Log.d("Miga","GOip:" +GOip);
+                                        //s_status ="GOip:" +GOip;
+                                        if(GOip.equals("192.168.49.1")) {//傳封包的人是GO
+                                            GO_SSID = temp[0];//將自己的GO_SSID更新為GO的,這裡是為了Step2不要連上自己的GO
+                                            Log.d("Miga","GO_SSID:" +GO_SSID);
+                                            //s_status ="GO_SSID:" +GO_SSID;
+                                            GO_SSID_update = true;
+                                        }
+                                    }
+                                }
                                 // TTL -1
                                 try {
                                     if(Integer.valueOf(temp[2].trim())>0) {
@@ -2430,7 +2452,6 @@ public class Control extends Service {
                                             s_status = "Receive_peer_count Exception : at relay pkt (multicast) _" + e.toString();
                                         }
                                     }
-                                    Thread.sleep(1000);
                                 }catch (Exception e){
                                     e.printStackTrace();
                                     Log.d("Miga", "Receive_peer_count Exception : // relay packet _" + e.toString());
@@ -2438,6 +2459,8 @@ public class Control extends Service {
                                 }
                             }
                         }
+                        int randomnum = randomWithRange(1,3)*1000;
+                        Thread.sleep(randomnum);
                     }
                 }
             }catch (SocketException e) {
@@ -2599,7 +2622,9 @@ public class Control extends Service {
                         //Log.v("Miga", "PeerTable:" + PeerTable);
                         //s_status = "PeerTable:" + PeerTable;
                     }
-                    Thread.sleep(1000);
+                    //Thread.sleep(1000);
+                    int randomnum = randomWithRange(1,3)*1000;
+                    Thread.sleep(randomnum);
                 }
             } catch (SocketException e) {
                 e.printStackTrace();
@@ -2997,7 +3022,8 @@ public class Control extends Service {
                         GOpasswd = group.getPassphrase();
                         WiFiApName = group.getNetworkName();
                         Cluster_Name = WiFiApName;
-                        GO_mac = group.getOwner().deviceAddress.toString();
+                        GO_mac = group.getOwner().deviceAddress.toString();//這裡的GO_mac沒有用，抓到的是自己的mac address，因此加入了GO_SSID
+                        GO_SSID = group.getNetworkName();//用來於Step2判斷是否要連線的是自己的GO
                         STATE = StateFlag.ADD_SERVICE.getIndex();//1
                         if(!group.getClientList().isEmpty()){
                             ROLE = RoleFlag.GO.getIndex();
@@ -3093,7 +3119,10 @@ public class Control extends Service {
                         GOpasswd = group.getPassphrase();
                         WiFiApName = group.getNetworkName();
                         Cluster_Name = WiFiApName;
-                        GO_mac = group.getOwner().deviceAddress.toString();
+                        GO_mac = group.getOwner().deviceAddress.toString();//這裡的GO_mac沒有用，抓到的是自己的mac address，因此加入了GO_SSID
+                        GO_SSID = group.getNetworkName();//用來於Step2判斷是否要連線的是自己的GO
+                        Log.d("Miga","GO_SSID:" +GO_SSID);
+                        s_status="GO_SSID: "+GO_SSID;
                         STATE = StateFlag.ADD_SERVICE.getIndex();//1
                     }
                 }

@@ -786,6 +786,7 @@ public class Control extends Service {
                                     STATE = StateFlag.ADD_SERVICE.getIndex();
                                     Isconnect = true;
                                     IsP2Pconnect = true;//p2p已有人連上/被連上,目前主要是用來判斷是否可以開始進行Group內peer的計算
+                                    CNTable.put(Cluster_Name,0);//將自己的CN放入CNTable
                                     return;
                                 } else {//連上別人
                                     // Try to connect Ap(連上排序第一個or第二個的裝置)
@@ -2090,6 +2091,7 @@ public class Control extends Service {
                                     }else {//wifi沒有連上，表示我只有client.因此我是GO
                                         ROLE = RoleFlag.GO.getIndex();
                                         IsP2Pconnect = true;
+                                        CNTable.put(Cluster_Name,0);//將自己的CN放入CNTable
                                     }
                                     Log.d("Miga", "CollectIP_server/Role transform ROLE= "+PreROLE+" into : "+ROLE);
                                     s_status= "CollectIP_server/Role transform ROLE= "+PreROLE+" into : "+ROLE;
@@ -2348,6 +2350,8 @@ public class Control extends Service {
                                         }
                                     }
                                 }
+                                //Log.d("Miga", "I got message from unicast" + message);
+                                //s_status = "I got message from unicast" + message;
                                 // TTL -1
                                 try {
                                     if(Integer.valueOf(temp[2].trim())>0) {
@@ -2361,7 +2365,8 @@ public class Control extends Service {
                                 }
                                 // update peer table
                                 //if (Newcompare(temp[1], Cluster_Name) == 0) {//相同Cluster_Name
-                                    PeerTable.put(temp[0], 10);//填入收到data的SSID(WiFiApName)
+                                if(!PeerTable.containsKey(temp[0])) {
+                                    PeerTable.put(temp[0], 20);//填入收到data的SSID(WiFiApName)
                                     if (count_peer() + 1 != pre_peer_count) {
                                         pre_peer_count = count_peer() + 1;//更新現在PeerTable內有幾個Peer
                                         s_status = "peer_count time : " + Double.toString(((Calendar.getInstance().getTimeInMillis() - start_time) / 1000.0)) + " stay_time : " + Double.toString((sleep_time / 1000.0))
@@ -2369,6 +2374,7 @@ public class Control extends Service {
                                         Log.d("Miga", "peer_count time : " + Double.toString(((Calendar.getInstance().getTimeInMillis() - start_time) / 1000.0)) + " stay_time : " + Double.toString((sleep_time / 1000.0))
                                                 + " Round_Num :" + NumRound + " peer count : " + (count_peer() + 1) + " PeerTable:" + PeerTable);
                                     }
+                                }
                                     //Log.v("Miga", "PeerTable:" + PeerTable);
                                     //s_status = "PeerTable:" + PeerTable;
                                 //}
@@ -2380,15 +2386,22 @@ public class Control extends Service {
                                         sendds = null;
                                         sendds = new DatagramSocket();
                                         try {
+                                            //避免RELAY回原本傳回去的那個device
+                                            InetAddress WiFiIPAddress = receivedpkt_pc.getAddress();
+                                            String clientip = WiFiIPAddress.toString().split("/")[1];//接收CLIENT的IP
+                                            //Log.d("Miga", "clientip: " + clientip);
+                                            //s_status = "State : clientip: " +clientip;
                                             // unicast
                                             iterator = IPTable.keySet().iterator();
                                             while (iterator.hasNext()) {
                                                 tempkey = iterator.next().toString();
-                                                senddp = new DatagramPacket(message.getBytes(), message.length(),
-                                                        InetAddress.getByName(tempkey), IP_port_for_peer_counting);
-                                                sendds.send(senddp);
-                                                //Log.d("Miga", "(Relay)Send the message: " + message + " to " + tempkey);
-                                                //s_status = "State : (Relay)Send the message: " + message + " to " + tempkey;
+                                                if(!clientip.equals(tempkey)) {
+                                                    senddp = new DatagramPacket(message.getBytes(), message.length(),
+                                                            InetAddress.getByName(tempkey), IP_port_for_peer_counting);
+                                                    sendds.send(senddp);
+                                                    //Log.d("Miga", "(Relay)Send the message: " + message + " to " + tempkey);
+                                                    //s_status = "State : (Relay)Send the message: " + message + " to " + tempkey;
+                                                }
                                             }
                                             sendds.close();
                                         } catch (Exception e) {
@@ -2417,6 +2430,7 @@ public class Control extends Service {
                                             s_status = "Receive_peer_count Exception : at relay pkt (multicast) _" + e.toString();
                                         }
                                     }
+                                    Thread.sleep(1000);
                                 }catch (Exception e){
                                     e.printStackTrace();
                                     Log.d("Miga", "Receive_peer_count Exception : // relay packet _" + e.toString());
@@ -2545,7 +2559,7 @@ public class Control extends Service {
                             //s_status="I send unicast message:"+message;
 
                         }
-                        if(ROLE == RoleFlag.BRIDGE.getIndex()) {
+                        if(ROLE == RoleFlag.BRIDGE.getIndex()) {//BRIDGE會多一個ROLE是為了讓另個cluster的知道是BRIDGE傳過去的(做IPTable更新用)
                             //for bridge
                             message = WiFiApName + "#" + Cluster_Name + "#" + "5"+"#"+ROLE;// 0: source SSID 1: cluster name 2: TTL 3:ROLE
                             dp = new DatagramPacket(message.getBytes(), message.length(),
@@ -2989,6 +3003,7 @@ public class Control extends Service {
                             ROLE = RoleFlag.GO.getIndex();
                             IsP2Pconnect=true;//p2p已有人連上/被連上,目前主要是用來判斷是否可以開始進行Group內peer的計算
                             IsManual = true;//這個裝置是手動先連線的
+                            CNTable.put(Cluster_Name,0);//將自己的CN放入CNTable
                         }
 
                     }

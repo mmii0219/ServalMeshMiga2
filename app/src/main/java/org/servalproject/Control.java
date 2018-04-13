@@ -628,7 +628,7 @@ public class Control extends Service {
                 }
                 sleep_time = sleep_time + 1000;
                 Log.d("Miga", "WiFi_Connect/Collect data and record size : " + record_set+record_set.size());
-                s_status="state: WiFi_Connect/Receive record size:"+record_set.size();
+                //s_status="state: WiFi_Connect/Receive record size:"+record_set.size();
 
                 if(InfoChangeTime < 3) {//交換次數少於3次
                     STATE = StateFlag.ADD_SERVICE.getIndex();//再去重新加入資料並交換
@@ -2100,7 +2100,7 @@ public class Control extends Service {
                                         CNTable.put(Cluster_Name,0);//將自己的CN放入CNTable
                                     }
                                     Log.d("Miga", "CollectIP_server/Role transform ROLE= "+PreROLE+" into : "+ROLE);
-                                    s_status= "CollectIP_server/Role transform ROLE= "+PreROLE+" into : "+ROLE;
+                                    //s_status= "CollectIP_server/Role transform ROLE= "+PreROLE+" into : "+ROLE;
                                 }
 
 
@@ -3096,7 +3096,7 @@ public class Control extends Service {
                                     IsManual = true;//這個裝置是手動先連線的
                                     WiFiIpAddr = wifiIpAddress();//取得wifi IP address
                                     Log.d("Miga", "Initial/ROLE:" + ROLE + "Cluster_Name:" + Cluster_Name+" wifiIpAddress:"+WiFiIpAddr);
-                                    s_status="state: WiFiIpAddress="+WiFiIpAddr;
+                                    s_status="state: WiFi Ip Address = "+WiFiIpAddr;
                                     if(!isOpenSWIAThread){//開啟client傳送wifi ip address thread給GO
                                         if (SendWiFiIpAddr == null) {
                                             SendWiFiIpAddr = new SendWiFiIpAddr();

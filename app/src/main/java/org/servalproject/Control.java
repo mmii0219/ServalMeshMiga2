@@ -1591,6 +1591,7 @@ public class Control extends Service {
             bcMsg = new byte[8192];
             dgpkt = new DatagramPacket(bcMsg, bcMsg.length);
             dgskt = new DatagramSocket(IP_port_for_can_connect);
+            dgskt.setReuseAddress(true);//For EADDRINUSE (Address already in use) Exception
             if (IsP2Pconnect) {
                 message = WiFiApName +"#"+ WiFiIpAddr + "#" + WantConnectCN;
                 //multicast
@@ -2363,7 +2364,7 @@ public class Control extends Service {
                                 if(!GO_SSID_update) {
                                     if (ROLE == RoleFlag.CLIENT.getIndex()) {
                                         InetAddress WiFiIPAddress = receivedpkt_pc.getAddress();
-                                        String GOip = WiFiIPAddress.toString().split("/")[1];//接收CLIENT的IP
+                                        String GOip = WiFiIPAddress.toString().split("/")[1];//接收GO的IP
                                         //Log.d("Miga","GOip:" +GOip);
                                         //s_status ="GOip:" +GOip;
                                         if(GOip.equals("192.168.49.1")) {//傳封包的人是GO
@@ -2391,10 +2392,20 @@ public class Control extends Service {
                                     PeerTable.put(temp[0], 20);//填入收到data的SSID(WiFiApName)
                                     if (count_peer() + 1 != pre_peer_count) {
                                         pre_peer_count = count_peer() + 1;//更新現在PeerTable內有幾個Peer
-                                        s_status = "peer_count time : " + Double.toString(((Calendar.getInstance().getTimeInMillis() - start_time) / 1000.0)) + " stay_time : " + Double.toString((sleep_time / 1000.0))
+                                        s_status = "peer_count time : " + Double.toString(((Calendar.getInstance().getTimeInMillis() - start_time) / 1000.0))
                                                 + " Round_Num :" + NumRound + " peer count : " + (count_peer() + 1) + " PeerTable:" + PeerTable;
                                         Log.d("Miga", "peer_count time : " + Double.toString(((Calendar.getInstance().getTimeInMillis() - start_time) / 1000.0)) + " stay_time : " + Double.toString((sleep_time / 1000.0))
                                                 + " Round_Num :" + NumRound + " peer count : " + (count_peer() + 1) + " PeerTable:" + PeerTable);
+                                    }
+
+                                    InetAddress WiFiIPAddress = receivedpkt_pc.getAddress();
+                                    String clientip = WiFiIPAddress.toString().split("/")[1];//接收CLIENT的IP
+                                    if(!clientip.equals("192.168.49.1")) {//不是GO(GO的不存在CLINET內)
+                                        if (!IPTable.containsKey(clientip)) {//避免client在sendWiFiIPAddress沒有成功傳來，因此直接在這邊做IPTable的儲存->SendWiFiIPAddress和Collect_IPServer之後可以拿掉了
+                                            IPTable.put(clientip, 0);
+                                            Log.d("Miga", "Receive_peer_count/IPTable:" + IPTable);
+                                            s_status = "Receive_peer_count/IPTable:" + IPTable;
+                                        }
                                     }
                                 }
                                     //Log.v("Miga", "PeerTable:" + PeerTable);

@@ -2305,7 +2305,7 @@ public class Control extends Service {
         private DatagramPacket receivedp, senddp;
         private DatagramSocket sendds;
         private Iterator iterator;
-        private String message, tempkey;
+        private String message, tempkey, recv_ip;
         private String[] temp;
         private MulticastSocket multicsk;//Miga20180312
 
@@ -2340,11 +2340,13 @@ public class Control extends Service {
                         temp = RecvMsg_pc.split("#");//將message之中有#則分開存到tmep陣列裡;message = WiFiApName + "#" + Cluster_Name + "#" + "5"+ "#" +ROLE;
                         if (temp[0] != null && temp[1] != null && temp[2] != null && WiFiApName != null) {
                             if (Newcompare(temp[0], WiFiApName) != 0) {//接收到的data和此裝置的SSID不同; 若A>B則reutrn 1
+                                InetAddress P2PIPAddress = receivedpkt_pc.getAddress();
+                                recv_ip = P2PIPAddress.toString().split("/")[1];//接收傳這個pkt的ip
                                 if(!isreceiveformbridge) {//還沒從bridge接收到ip
                                     if (temp.length == 4) {//表示有temp3
                                         //接收到的info事由BRIDGE傳來的，則將此ip存到自己的IPTable
                                         if (Integer.valueOf(temp[3]) == RoleFlag.BRIDGE.getIndex()) {
-                                            InetAddress P2PIPAddress = receivedpkt_pc.getAddress();
+                                            //InetAddress P2PIPAddress = receivedpkt_pc.getAddress();
                                             String bridgeip = P2PIPAddress.toString().split("/")[1];//接收BRIDGE的IP
                                             //Log.d("Miga", "Receive ip form BRIDGE: " + bridgeip);
                                             //s_status = "Receive ip form BRIDGE: " + bridgeip;
@@ -2357,7 +2359,7 @@ public class Control extends Service {
                                         }
                                     }
                                 }
-                                //Log.d("Miga", "I got message from unicast" + RecvMsg_pc);
+                                //Log.d("Miga", "I got message from: " + RecvMsg_pc);
                                 //s_status = "I got message from unicast" + RecvMsg_pc;
 
                                 //讓CLIENT更新GO_SSID
@@ -2420,15 +2422,15 @@ public class Control extends Service {
                                         sendds = new DatagramSocket();
                                         try {
                                             //避免RELAY回原本傳回去的那個device
-                                            InetAddress WiFiIPAddress = receivedpkt_pc.getAddress();
-                                            String clientip = WiFiIPAddress.toString().split("/")[1];//接收CLIENT的IP
+                                            //InetAddress WiFiIPAddress = receivedpkt_pc.getAddress();
+                                            //String clientip = WiFiIPAddress.toString().split("/")[1];//接收CLIENT的IP
                                             //Log.d("Miga", "clientip: " + clientip);
                                             //s_status = "State : clientip: " +clientip;
                                             // unicast
                                             iterator = IPTable.keySet().iterator();
                                             while (iterator.hasNext()) {
                                                 tempkey = iterator.next().toString();
-                                                if(!clientip.equals(tempkey)) {
+                                                if(!recv_ip.equals(tempkey)) {
                                                     senddp = new DatagramPacket(message.getBytes(), message.length(),
                                                             InetAddress.getByName(tempkey), IP_port_for_peer_counting);
                                                     sendds.send(senddp);
@@ -2470,8 +2472,7 @@ public class Control extends Service {
                                 }
                             }
                         }
-                        int randomnum = randomWithRange(1,3)*1000;
-                        Thread.sleep(randomnum);
+
                     }
                 }
             }catch (SocketException e) {
@@ -2580,6 +2581,9 @@ public class Control extends Service {
                 sendds = new DatagramSocket();
                 while(true) {
                     if (IsP2Pconnect) {
+                        int randomnum = randomWithRange(1,4)*1000;
+                        Thread.sleep(randomnum);
+                        //Log.d("Miga","Sleep:"+randomnum);
                         message = WiFiApName + "#" + Cluster_Name + "#" + "5";// 0: source SSID 1: cluster name 2: TTL
 
                         // unicast
@@ -2634,8 +2638,7 @@ public class Control extends Service {
                         //s_status = "PeerTable:" + PeerTable;
                     }
                     //Thread.sleep(1000);
-                    int randomnum = randomWithRange(1,3)*1000;
-                    Thread.sleep(randomnum);
+
                 }
             } catch (SocketException e) {
                 e.printStackTrace();
@@ -2702,7 +2705,8 @@ public class Control extends Service {
                             }
                         }
                     }
-                    Thread.sleep(1000);
+                    int randomnum = randomWithRange(2,4)*1000;
+                    Thread.sleep(randomnum);
                 }
             } catch (SocketException e) {
                 e.printStackTrace();

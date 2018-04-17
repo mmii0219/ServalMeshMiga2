@@ -1937,14 +1937,14 @@ public class Control extends Service {
                             STATE = StateFlag.ADD_SERVICE.getIndex();
                         }//End DISCOVERY_SERVICE
                         if(InfoChangeTime < 3) {
-                            int randomnum = randomWithRange(4,7)*1000;
+                            int randomnum = randomWithRange(4,8)*1000;
                             Thread.sleep(randomnum);
                             //Log.d("Miga","Thread sleep:"+randomnum);
                             sleep_time = sleep_time + randomnum;
                             if(Step2Auto)
                                 step2_sleep_time = step2_sleep_time + randomnum;
                         }else{
-                            int randomnum = randomWithRange(7,10)*1000;
+                            int randomnum = randomWithRange(8,10)*1000;
                             Thread.sleep(randomnum);
                             //Log.d("Miga","Thread sleep:"+randomnum);
                             sleep_time = sleep_time + randomnum;
@@ -2075,7 +2075,7 @@ public class Control extends Service {
                                 Log.d("Miga", "IpTable: " + IPTable);
 
                                 //unicast 回傳到該wifi ip address,及該port
-                                sendbackmessage = "IpReceive";
+                                sendbackmessage = "IpReceive"+"#"+WiFiApName;//20180417加入+"#"+WiFiApName，為了讓CLIENT更新GO_SSID
                                 dgpacket = new DatagramPacket(sendbackmessage.getBytes(), sendbackmessage.length(), InetAddress.getByName(recWiFiIpAddr),IP_port_for_IPSave);
                                 dgsocket.send(dgpacket);
 
@@ -2148,10 +2148,13 @@ public class Control extends Service {
         MulticastSocket multicsk;//Miga20180129
         DatagramPacket msgPkt;//Miga
         String message,recmessage="";
+        String[] recMessage;
         private byte[] bcMsg;
         boolean isSuccessSend=false;
         DatagramPacket dgpkt;//unicast
         DatagramSocket dgskt;//unicast
+
+        private boolean GO_SSID_update = false;//for GO_SSID update
 
         public void run() {
             try {
@@ -2172,12 +2175,25 @@ public class Control extends Service {
                     if(dgpkt != null){
                         dgskt.receive(dgpkt);
                         recmessage = new String(bcMsg, 0 , dgpkt.getLength());
+
+                        recMessage = recmessage.split("#");//[0]:WiFiApName(SSID),[1]: WifiIP
                         //Log.d("Miga","Client get GO's msg:"+recmessage);
-                        if(recmessage.equals("IpReceive")) {//recmessage=="IpReceive" ,用==是比較物件, 在這裡字串比較應該用str.equals(str2);比較好
+                        if(recMessage[0].equals("IpReceive")) {//recmessage=="IpReceive" ,用==是比較物件, 在這裡字串比較應該用str.equals(str2);比較好
                             isSuccessSend = true;
                             Log.d("Miga","Client get GO's msg: IpReceive");
 
                         }
+                        //20180417將GO_SSID移來這裡
+                        //讓CLIENT更新GO_SSID
+                        if(!GO_SSID_update) {
+                            if (ROLE == RoleFlag.CLIENT.getIndex()) {
+                                GO_SSID = recMessage[1];//將自己的GO_SSID更新為GO的,這裡是為了Step2不要連上自己的GO
+                                Log.d("Miga", "GO_SSID:" + GO_SSID);
+                                //s_status ="GO_SSID:" +GO_SSID;
+                                GO_SSID_update = true;
+                            }
+                        }
+
                     }
                     //避免此裝置先變成了GO但是之後又發送ip給他的GO, 這樣此裝置的ROLE應為HYBRIYD才對
                     manager.requestGroupInfo(channel, new WifiP2pManager.GroupInfoListener() {
@@ -2315,7 +2331,6 @@ public class Control extends Service {
         private int i;
         private DatagramPacket msgPkt;//Miga
         private boolean isreceiveformbridge=false;
-        private boolean GO_SSID_update = false;
 
 
         public void run() {
@@ -2361,7 +2376,7 @@ public class Control extends Service {
                                 }
                                 //Log.d("Miga", "I got message from: " + RecvMsg_pc);
                                 //s_status = "I got message from unicast" + RecvMsg_pc;
-
+                                /*寫在這裡可能會讓GOip不准,可能抓到的是後面才傳來的pkt
                                 //讓CLIENT更新GO_SSID
                                 if(!GO_SSID_update) {
                                     if (ROLE == RoleFlag.CLIENT.getIndex()) {
@@ -2376,7 +2391,7 @@ public class Control extends Service {
                                             GO_SSID_update = true;
                                         }
                                     }
-                                }
+                                }*/
                                 // TTL -1
                                 try {
                                     if(Integer.valueOf(temp[2].trim())>0) {

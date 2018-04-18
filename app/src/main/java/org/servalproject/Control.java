@@ -819,17 +819,22 @@ public class Control extends Service {
                                     wc.allowedPairwiseCiphers.set(WifiConfiguration.PairwiseCipher.CCMP);
                                     wc.allowedProtocols.set(WifiConfiguration.Protocol.RSN);
                                     TryNum = 25;
-                                    //檢查我們所要連的GO是否還存在
+                                    //20180418註解之後就不會有一直連不上的問題了!!!
+                                    /*//檢查我們所要連的GO是否還存在
                                     wifiScanCheck = false;
                                     wifi.startScan();//startScan完畢後，wifi會呼叫SCAN_RESULTS_AVAILABLE_ACTION
                                     long wifiscan_time_start = Calendar.getInstance().getTimeInMillis();
                                     while (wifiScanCheck == false) {//在onCreate時有註冊一個廣播器,專門來徵測wifi scan的結果,wifi.startscan完畢後,wifiScanCheck應該會變為true
-                                        ;
+                                        Log.d("Miga","wifiScanCheck == false");
                                     }
                                     sleep_time = sleep_time + Calendar.getInstance().getTimeInMillis() - wifiscan_time_start;
+                                    Log.d("Miga","wifiScanCheck "+wifiScanCheck);
                                     wifiScanCheck = false;
+                                    Log.d("Miga","wifiScanCheck "+wifiScanCheck);
                                     boolean findIsGoExist = false;
 
+
+                                    Log.d("Miga","wifi_scan_results "+wifi_scan_results.size());
                                     for (int i = 0; i < wifi_scan_results.size(); i++) {//檢查接下來要連上的GO還在不在,wifi_scan_results:會列出掃描到的所有AP
                                         ScanResult sr = wifi_scan_results.get(i);
                                         if (sr.SSID.equals(SSID)) {//去比對每一個掃描到的AP,看是不是我們要連上的GO,若是則將findIsGoExist設為true並跳出for迴圈
@@ -837,12 +842,14 @@ public class Control extends Service {
                                             break;
                                         }
                                     }
-                                    //Log.d("Miga", "WiFi_Connect/findIsGoExist : " + findIsGoExist);
+                                    Log.d("Miga", "WiFi_Connect/findIsGoExist : " + findIsGoExist);
                                     if (findIsGoExist == false) {//若我們要連的GO不見的話,則回到ADD_SERVICE,重新再收集資料一次.20180307Miga 這裡可能要再想一下後面的流程
+                                        Log.d("Miga", "findIsGoExist == false" + findIsGoExist);
                                         STATE = StateFlag.ADD_SERVICE.getIndex();
+                                        Log.d("Miga", "STATE=" + STATE);
                                         return;
                                     }
-
+*/
                                     //使用wifi interface連線,連上GO
                                     int res = wifi.addNetwork(wc);
                                     isWifiConnect = wifi.enableNetwork(res, true);//學長的temp

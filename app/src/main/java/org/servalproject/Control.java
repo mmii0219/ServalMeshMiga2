@@ -347,11 +347,11 @@ public class Control extends Service {
             String GroupPeer = data.getGroupPEER();
             String MAC = data.getMAC();
 
-            if (this.PEER.compareTo(PEER) < 0) {
+            /*if (this.PEER.compareTo(PEER) < 0) {
                 return 1;
             } else if (this.PEER.compareTo(PEER) > 0) {
                 return -1;
-            }
+            }*/
 
             if (this.POWER.compareTo(POWER) < 0) {
                 return 1;
@@ -928,7 +928,21 @@ public class Control extends Service {
 
                     // GO檢查自己是否被其他裝置連
                     if (ROLE == RoleFlag.GO.getIndex()) {
-                        if (peerCount > 1) {//peerCount是計算同個group內裡面有幾個device,若是>1的話表示GO有被其他裝置連(=1表示只有GO自己)
+                        manager.requestGroupInfo(channel, new WifiP2pManager.GroupInfoListener() {
+                            @Override
+                            public void onGroupInfoAvailable(WifiP2pGroup group) {
+                                if (group != null) {
+                                    if(group.getClientList().isEmpty()){
+                                        hasclients = false;
+                                    }else{
+                                        hasclients = true;
+                                    }
+
+                                }
+                            }
+                        });
+                        Thread.sleep(1500);
+                        if ( hasclients ||peerCount > 1) {//peerCount是計算同個group內裡面有幾個device,若是>1的話表示GO有被其他裝置連(=1表示只有GO自己)
                             detect_run = 0;
                             STATE = StateFlag.ADD_SERVICE.getIndex();
                             return;

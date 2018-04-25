@@ -353,11 +353,17 @@ public class Control extends Service {
                 return -1;
             }*/
 
-            if (this.POWER.compareTo(POWER) < 0) {
+            if(Integer.valueOf(this.POWER)<Integer.valueOf(POWER)){
+                return 1;
+            }else if(Integer.valueOf(this.POWER)<Integer.valueOf(POWER)){
+                return -1;
+            }
+            //用STRING比較會有問題!!!
+            /*if (this.POWER.compareTo(POWER) < 0) {
                 return 1;
             } else if (this.POWER.compareTo(POWER) > 0) {
                 return -1;
-            }
+            }*/
 
             if (this.MAC.compareTo(MAC) < 0) {
                 return 1;
@@ -386,12 +392,16 @@ public class Control extends Service {
             } else if (data1.getPEER().compareTo(data2.getPEER()) > 0) {
                 return -1;
             }
-
-            if (data1.getPOWER().compareTo(data2.getPOWER()) < 0) {
+            if(Integer.valueOf(data1.getPOWER())<Integer.valueOf(data2.getPOWER())){
+                return 1;
+            }else if(Integer.valueOf(data1.getPOWER())<Integer.valueOf(data2.getPOWER())){
+                return -1;
+            }
+           /* if (data1.getPOWER().compareTo(data2.getPOWER()) < 0) {
                 return 1;
             } else if (data1.getPOWER().compareTo(data2.getPOWER()) > 0) {
                 return -1;
-            }
+            }*/
 
             if (data1.getMAC().compareTo(data2.getMAC()) < 0) {
                 return 1;
@@ -818,7 +828,7 @@ public class Control extends Service {
                                     wc.allowedPairwiseCiphers.set(WifiConfiguration.PairwiseCipher.TKIP);
                                     wc.allowedPairwiseCiphers.set(WifiConfiguration.PairwiseCipher.CCMP);
                                     wc.allowedProtocols.set(WifiConfiguration.Protocol.RSN);
-                                    TryNum = 25;
+                                    TryNum = 15;
                                     //20180418註解之後就不會有一直連不上的問題了!!!
                                     /*//檢查我們所要連的GO是否還存在
                                     wifiScanCheck = false;
@@ -1004,7 +1014,7 @@ public class Control extends Service {
                         wc.allowedPairwiseCiphers.set(WifiConfiguration.PairwiseCipher.TKIP);
                         wc.allowedPairwiseCiphers.set(WifiConfiguration.PairwiseCipher.CCMP);
                         wc.allowedProtocols.set(WifiConfiguration.Protocol.RSN);
-                        TryNum = 25;
+                        TryNum = 15;
                         //檢查我們所要連的GO是否還存在
                         wifiScanCheck = false;
                         long wifiscan_time_start = Calendar.getInstance().getTimeInMillis();
@@ -1553,7 +1563,7 @@ public class Control extends Service {
             wc.allowedPairwiseCiphers.set(WifiConfiguration.PairwiseCipher.TKIP);
             wc.allowedPairwiseCiphers.set(WifiConfiguration.PairwiseCipher.CCMP);
             wc.allowedProtocols.set(WifiConfiguration.Protocol.RSN);
-            TryNum = 25;
+            TryNum = 15;
             //檢查我們所要連的GO是否還存在
             wifiScanCheck = false;
             long wifiscan_time_start = Calendar.getInstance().getTimeInMillis();

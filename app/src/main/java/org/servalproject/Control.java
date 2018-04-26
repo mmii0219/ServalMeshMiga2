@@ -747,7 +747,7 @@ public class Control extends Service {
 
                 //20180409 Start For Step2
                 if(Step2Auto){
-                    if(Before_Step2_RunT >= 3 ){//交換次數少於3次
+                    if(Before_Step2_RunT >= 2 ){//交換次數少於2次
                        Step2Connection();
                     }
                     return;
@@ -1565,7 +1565,7 @@ public class Control extends Service {
             wc.allowedProtocols.set(WifiConfiguration.Protocol.RSN);
             TryNum = 15;
             //檢查我們所要連的GO是否還存在
-            wifiScanCheck = false;
+            /*wifiScanCheck = false;
             long wifiscan_time_start = Calendar.getInstance().getTimeInMillis();
             while (wifiScanCheck == false) {//在onCreate時有註冊一個廣播器,專門來徵測wifi scan的結果,wifi.startscan完畢後,wifiScanCheck應該會變為true
                 ;
@@ -1585,7 +1585,7 @@ public class Control extends Service {
             if (findIsGoExist == false) {//若我們要連的GO不見的話,則回到ADD_SERVICE,重新再收集資料一次.20180307Miga 這裡可能要再想一下後面的流程
                 STATE = StateFlag.ADD_SERVICE.getIndex();
                 return;
-            }
+            }*/
 
             //使用wifi interface連線,連上GO
             int res = wifi.addNetwork(wc);
@@ -2785,7 +2785,7 @@ public class Control extends Service {
                             dp = new DatagramPacket(message.getBytes(), message.length(),
                                     InetAddress.getByName(tempkey), IP_port_for_cluster_name);
                             sendds.send(dp);//一一傳送給IPTable內的所有IP
-                            //Log.v("Miga", "I send unicast message:" + message);
+                            Log.v("Miga", "I send unicast message:" + message);
                             //s_status="I send unicast message:"+message;
 
                         }
@@ -3235,36 +3235,32 @@ public class Control extends Service {
                         WiFiApName = group.getNetworkName();
                         Cluster_Name = WiFiApName;
                         GO_mac = group.getOwner().deviceAddress.toString();//這裡的GO_mac沒有用，抓到的是自己的mac address，因此加入了GO_SSID
-                        GO_SSID = group.getNetworkName();//用來於Step2判斷是否要連線的是自己的GO
-                        Log.d("Miga","GO_SSID:" +GO_SSID);
-                        s_status="GO_SSID: "+GO_SSID;
+                        if(ROLE == RoleFlag.NONE.getIndex()) {//20180426只有NONE需要進來這裡更新GO_SSID，因為CLIENT在sendwifiipaddr已經進行更新了
+                            GO_SSID = group.getNetworkName();//用來於Step2判斷是否要連線的是自己的GO
+                            Log.d("Miga", "GO_SSID:" + GO_SSID);
+                            s_status = "GO_SSID: " + GO_SSID;
+                        }
                         STATE = StateFlag.ADD_SERVICE.getIndex();//1
                     }
                 }
             });
 
             try {
-                Thread.sleep(1000);
+                Thread.sleep(3000);
             } catch (InterruptedException e) {
                 // TODO Auto-generated catch block
                 e.printStackTrace();
             }
 
-            if (t_Send_Cluster_Name == null) {
+            /*if (t_Send_Cluster_Name == null) {
                 t_Send_Cluster_Name = new Send_Cluster_Name();
                 t_Send_Cluster_Name.start();
             }
             if (t_Receive_Cluster_Name == null) {
                 t_Receive_Cluster_Name = new Receive_Cluster_Name();
                 t_Receive_Cluster_Name.start();
-            }
+            }*/
 
-            try {
-                Thread.sleep(1000);
-            } catch (InterruptedException e) {
-                // TODO Auto-generated catch block
-                e.printStackTrace();
-            }
 
 
             if(ROLE == RoleFlag.NONE.getIndex()) {//20180408加入，若剛開始不是已經設定好ROLE的裝置，則每個人都要移除掉自己的GROUP。這樣在serivce discvoery階段比較可以找到其他人
@@ -3419,6 +3415,15 @@ public class Control extends Service {
         if (t_receive_peer_count == null) {
             t_receive_peer_count = new Receive_peer_count();
             t_receive_peer_count.start();
+        }
+
+        if (t_Send_Cluster_Name == null) {
+            t_Send_Cluster_Name = new Send_Cluster_Name();
+            t_Send_Cluster_Name.start();
+        }
+        if (t_Receive_Cluster_Name == null) {
+            t_Receive_Cluster_Name = new Receive_Cluster_Name();
+            t_Receive_Cluster_Name.start();
         }
 
         if(t_CanConnect == null){

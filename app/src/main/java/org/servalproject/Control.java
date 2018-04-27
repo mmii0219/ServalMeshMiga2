@@ -645,7 +645,7 @@ public class Control extends Service {
                     return;
                 }
                 if(Step2Auto) {
-                    if (Before_Step2_RunT < 3) {//交換次數少於3次
+                    if (Before_Step2_RunT < 2) {//交換次數少於2次
                         STATE = StateFlag.ADD_SERVICE.getIndex();//再去重新加入資料並交換
                         return;
                     }
@@ -1341,6 +1341,7 @@ public class Control extends Service {
                 if (ROLE == RoleFlag.GO.getIndex()) {//GO使用wifi去連
                     WifiInterface_Connect(SSID, key, "2",Choose_Cluster_Name);
                     if (!mNetworkInfo.isConnected()) {//Wifi沒連上
+                        CNTable.remove(Choose_Cluster_Name);
                         STATE = StateFlag.ADD_SERVICE.getIndex();
                         List<WifiConfiguration> list = wifi.getConfiguredNetworks();
                         for (WifiConfiguration i : list) {

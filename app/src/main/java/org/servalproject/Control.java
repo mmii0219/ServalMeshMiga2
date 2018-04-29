@@ -32,6 +32,7 @@ import android.os.AsyncTask;
 import android.os.BatteryManager;
 import android.os.Binder;
 import android.os.Build;
+import android.os.Handler;
 import android.os.IBinder;
 import android.os.PowerManager;
 import android.text.format.Time;
@@ -47,6 +48,7 @@ import java.io.FileOutputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
@@ -87,6 +89,8 @@ import org.servalproject.wifidirect.AutoWiFiDirect;
 import java.io.IOException;
 import java.util.Collection;
 import java.util.Iterator;
+import java.util.Timer;
+import java.util.TimerTask;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -251,6 +255,8 @@ public class Control extends Service {
     private DatagramSocket receivedskt_cc;//unicast
     private String RecvMsg_cc="";
     private Map<String, Integer> CNTable = new HashMap<String, Integer>();
+    private boolean IsStep2TimeStart = false; // for step2 time 計算
+    private boolean IsGOConnecting = false;//用來表示GO是不是正在嘗試連線
 
     public enum RoleFlag {
         NONE(0), GO(1), CLIENT(2), BRIDGE(3), HYBRID(4);//BRIDGE就是之前的RELAY, HYBRID:一邊是GO一邊是Client的身分
@@ -381,27 +387,24 @@ public class Control extends Service {
             Step1Data_set data1 = (Step1Data_set) obj1;
             Step1Data_set data2 = (Step1Data_set) obj2;
 
-            if (data1.getGroupPEER().compareTo(data2.getGroupPEER()) < 0) {
+
+            if (Integer.valueOf(data1.getGroupPEER()) < Integer.valueOf(data2.getGroupPEER())) {
                 return 1;
-            } else if (data1.getGroupPEER().compareTo(data2.getGroupPEER()) > 0) {
+            } else if (Integer.valueOf(data1.getGroupPEER()) > Integer.valueOf(data2.getGroupPEER())) {
                 return -1;
             }
 
-            if (data1.getPEER().compareTo(data2.getPEER()) < 0) {
+            /*if (Integer.valueOf(data1.getPEER()) < Integer.valueOf(data2.getPEER())) {
                 return 1;
-            } else if (data1.getPEER().compareTo(data2.getPEER()) > 0) {
-                return -1;
-            }
-            if(Integer.valueOf(data1.getPOWER())<Integer.valueOf(data2.getPOWER())){
-                return 1;
-            }else if(Integer.valueOf(data1.getPOWER())<Integer.valueOf(data2.getPOWER())){
-                return -1;
-            }
-           /* if (data1.getPOWER().compareTo(data2.getPOWER()) < 0) {
-                return 1;
-            } else if (data1.getPOWER().compareTo(data2.getPOWER()) > 0) {
+            } else if (Integer.valueOf(data1.getPEER()) > Integer.valueOf(data2.getPEER())) {
                 return -1;
             }*/
+            if(Integer.valueOf(data1.getPOWER())< Integer.valueOf(data2.getPOWER())){
+                return 1;
+            }else if(Integer.valueOf(data1.getPOWER()) > Integer.valueOf(data2.getPOWER())){
+                return -1;//回傳-1表示把data1往前排
+            }
+
 
             if (data1.getMAC().compareTo(data2.getMAC()) < 0) {
                 return 1;
@@ -645,6 +648,10 @@ public class Control extends Service {
                     return;
                 }
                 if(Step2Auto) {
+                    if(!IsStep2TimeStart) {//若是還沒進來更新step2_start_time，則近來更新
+                        step2_start_time = Calendar.getInstance().getTimeInMillis();
+                        IsStep2TimeStart = true;
+                    }
                     if (Before_Step2_RunT < 2) {//交換次數少於2次
                         STATE = StateFlag.ADD_SERVICE.getIndex();//再去重新加入資料並交換
                         return;
@@ -1341,7 +1348,10 @@ public class Control extends Service {
                 if (ROLE == RoleFlag.GO.getIndex()) {//GO使用wifi去連
                     WifiInterface_Connect(SSID, key, "2",Choose_Cluster_Name);
                     if (!mNetworkInfo.isConnected()) {//Wifi沒連上
-                        CNTable.remove(Choose_Cluster_Name);
+                        if(IsGOConnecting) { //20180429, GO先前有嘗試連線，但是沒有連成功，因此移除CNTable該SSID
+                            CNTable.remove(Choose_Cluster_Name);
+                            IsGOConnecting = false;
+                        }
                         STATE = StateFlag.ADD_SERVICE.getIndex();
                         List<WifiConfiguration> list = wifi.getConfiguredNetworks();
                         for (WifiConfiguration i : list) {
@@ -1551,6 +1561,10 @@ public class Control extends Service {
             //連上別人
             // Try to connect Ap(連上排序第一個or第二個的裝置)
             IsConnecting = true;//正在連線中,避免Reconnecting_Wifi繼續執行
+            //20180429 start 為了讓GO移除掉沒有成功連線的CNTable
+            if(ROLE == RoleFlag.GO.getIndex())
+                IsGOConnecting = true;//GO正在嘗試連線
+            //20180429 end
             WifiConfiguration wc = new WifiConfiguration();
             s_status = "State: choosing peer done, try to associate with" + ": SSID name: " + SSID + " , passwd: " + key;
             Log.d("Miga", "State: choosing peer done, try to associate with" + ": SSID name: " + SSID + " , passwd: " + key);
@@ -2266,6 +2280,7 @@ public class Control extends Service {
                         if(!GO_SSID_update) {
                             if (ROLE == RoleFlag.CLIENT.getIndex()) {
                                 GO_SSID = recMessage[1];//將自己的GO_SSID更新為GO的,這裡是為了Step2不要連上自己的GO
+                                Cluster_Name = recMessage[1];//20180427避免再Receive_CN時沒更新到，因此也在這裡再做一次更新
                                 Log.d("Miga", "GO_SSID:" + GO_SSID);
                                 //s_status ="GO_SSID:" +GO_SSID;
                                 GO_SSID_update = true;
@@ -2539,7 +2554,13 @@ public class Control extends Service {
                                                     //s_status = "State : (Relay)Send the message: " + message + " to " + tempkey;
                                                 }
                                             }
-                                            sendds.close();
+                                            //for BRIDGE
+                                            senddp = new DatagramPacket(message.getBytes(), message.length(),
+                                                    InetAddress.getByName("192.168.49.1"), IP_port_for_peer_counting);
+                                            sendds.send(senddp);
+                                            if(sendds!=null)
+                                                sendds.close();
+                                            //sendds.setRequestProperty("Connection","Close");
                                         } catch (Exception e) {
                                             e.printStackTrace();
                                             Log.d("Miga", "Receive_peer_count Exception : at relay pkt (unicast) _" + e.toString());
@@ -2555,6 +2576,8 @@ public class Control extends Service {
                                                         multicsk = new MulticastSocket(6790);//6790: for peertable update
                                                         msgPkt = new DatagramPacket(message.getBytes(), message.length(), multicgroup, 6790);
                                                         multicsk.send(msgPkt);
+                                                        if(multicsk!=null)
+                                                            multicsk.close();
                                                         //Log.v("Miga", "multicsk send message:" + message);
                                                         //s_status = "multicsk send message" + message;
                                                     }
@@ -2566,6 +2589,10 @@ public class Control extends Service {
                                             s_status = "Receive_peer_count Exception : at relay pkt (multicast) _" + e.toString();
                                         }
                                     }
+                                    if(multicsk!=null)
+                                        multicsk.close();
+                                    if(sendds!=null)
+                                        sendds.close();
                                 }catch (Exception e){
                                     e.printStackTrace();
                                     Log.d("Miga", "Receive_peer_count Exception : // relay packet _" + e.toString());
@@ -2613,8 +2640,8 @@ public class Control extends Service {
                                 //unicast
                                 receivedskt_pc.receive(receivedpkt_pc);//把接收到的data存在receivedp.
                                 RecvMsg_pc = new String(lMsg_pc, 0, receivedpkt_pc.getLength());//將接收到的IMsg轉換成String型態
-                                //Log.d("Miga", "I got message from unicast" + message);
-                                //s_status = "I got message from unicast" + message;
+                                //Log.d("Miga", "I got message from unicast" + RecvMsg_pc);
+                                //s_status = "I got message from unicast" + RecvMsg_pc;
                             //}
                         }
                     }
@@ -3089,9 +3116,46 @@ public class Control extends Service {
 
         Collect_record = new ArrayList<Step1Data_set>();// Wang
         getBatteryCapacity();
+        callAsynchronousTask();//Wang 20180427
 
 
 
+    }
+    //Wang
+    public static String getStackTrace(final Throwable throwable) {
+        final StringWriter sw = new StringWriter();
+        final PrintWriter pw = new PrintWriter(sw, true);
+        throwable.printStackTrace(pw);
+        return sw.getBuffer().toString();
+    }
+    //Wang
+    public void callAsynchronousTask() {
+        final Handler handler = new Handler();
+        Timer timer = new Timer();
+        TimerTask doAsynchronousTask = new TimerTask() {
+            @Override
+            public void run() {
+                handler.post(new Runnable() {
+                    public void run() {
+                        try {
+                            modeChanged();
+                            String server_status = ServalDCommand.serverStatus().status;
+                            if(server_status.equals("stopped")) {
+                                try{
+                                    ServalDCommand.serverStart();
+                                }catch(ServalDFailureException e){
+                                    Log.d("Wang", getStackTrace(e));
+                                }
+                            }
+                            // PerformBackgroundTask this class is the class that extends AsynchTask
+                        } catch (Exception e) {
+
+                        }
+                    }
+                });
+            }
+        };
+        timer.schedule(doAsynchronousTask, 0, 2000); //execute in every 2000 ms
     }
     //Miga for power
     private BroadcastReceiver mBatInfoReceiver = new BroadcastReceiver() {

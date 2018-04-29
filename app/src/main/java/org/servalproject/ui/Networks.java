@@ -543,7 +543,7 @@ public class Networks extends Activity implements CompoundButton.OnCheckedChange
         public void onCheckedChanged(CompoundButton buttonView,boolean isChecked) {
             if(enabledstep2.isChecked()){
                 WiFiDirectService.Step2Auto=true;
-                WiFiDirectService.step2_start_time = Calendar.getInstance().getTimeInMillis();
+                //WiFiDirectService.step2_start_time = Calendar.getInstance().getTimeInMillis();
             }else if (!enabledstep2.isChecked()){
                 WiFiDirectService.Step2Auto=false;
                 WiFiDirectService.step2_start_time = 0;

@@ -2558,8 +2558,8 @@ public class Control extends Service {
                                             senddp = new DatagramPacket(message.getBytes(), message.length(),
                                                     InetAddress.getByName("192.168.49.1"), IP_port_for_peer_counting);
                                             sendds.send(senddp);
-                                            if(sendds!=null)
-                                                sendds.close();
+                                            //if(sendds!=null)
+                                                //sendds.close();
                                             //sendds.setRequestProperty("Connection","Close");
                                         } catch (Exception e) {
                                             e.printStackTrace();
@@ -2568,6 +2568,12 @@ public class Control extends Service {
                                         }
                                         try {
                                             if (ROLE == RoleFlag.HYBRID.getIndex()|| ROLE == RoleFlag.BRIDGE.getIndex()) {
+                                                if (ROLE == RoleFlag.HYBRID.getIndex()) {//20180501 新增HYBRID轉傳給CLIENT的，測試可成功
+                                                    // broadcast
+                                                    senddp = new DatagramPacket(message.getBytes(), message.length(),
+                                                            InetAddress.getByName("192.168.49.255"), IP_port_for_peer_counting);
+                                                    sendds.send(senddp);
+                                                }
                                                 //multicast
                                                 if (mConnectivityManager != null) {
                                                     mNetworkInfo = mConnectivityManager.getNetworkInfo(ConnectivityManager.TYPE_WIFI);
@@ -2663,8 +2669,10 @@ public class Control extends Service {
                                 //multicast
                                 recvPeerSocket.receive(receivedpkt_pc);//recvPeerSocket_ port:6790
                                 RecvMsg_pc = new String(lMsg_pc, 0, receivedpkt_pc.getLength());//將接收到的IMsg轉換成String型態
-                                //Log.d("Miga", "I got message from multicast" + message);
-                                //s_status = "I got message from multicast" + message;
+                                /*if(ROLE == RoleFlag.HYBRID.getIndex()) {
+                                    Log.d("Miga", "I got message from multicast" + RecvMsg_pc);
+                                    s_status = "I got message from multicast" + RecvMsg_pc;
+                                }*/
                             }
                         }
                     }
@@ -2893,7 +2901,7 @@ public class Control extends Service {
                 }
 
                 while(true) {
-                    if (RecvMsg_cn != "") {
+                    if (RecvMsg_cn != "" && RecvMsg_cn!=null) {
                         temp = RecvMsg_cn.split("#");//將message之中有#則分開存到tmep陣列裡;message =  WiFiApName + "#" + Cluster_Name + "#" + ROLE + "#" + IsReceiveGoInfo + "#" + Time_Stamp + "#" + "5";
                         m_length = temp.length;
                         notnull=  true;

@@ -148,6 +148,7 @@ public class Control extends Service {
     private static int IP_port_for_peer_counting = 2666;
     private static int IP_port_for_cluster_name = 2777;
     private static int IP_port_for_can_connect = 2888;//Step2
+    private static int IP_port_for_client_ack = 2999;//Step2 client回傳p2p是否成功
     private ServerSocket ss = null;
     private Map<String, Integer> IPTable = new HashMap<String, Integer>();
     private Map<String, Integer> PeerTable = new HashMap<String, Integer>();
@@ -257,6 +258,7 @@ public class Control extends Service {
     private Map<String, Integer> CNTable = new HashMap<String, Integer>();
     private boolean IsStep2TimeStart = false; // for step2 time 計算
     private boolean IsGOConnecting = false;//用來表示GO是不是正在嘗試連線
+    private boolean IsClientConnecting = false;//用來表示Client是不是正在嘗試連線
 
     public enum RoleFlag {
         NONE(0), GO(1), CLIENT(2), BRIDGE(3), HYBRID(4);//BRIDGE就是之前的RELAY, HYBRID:一邊是GO一邊是Client的身分
@@ -1466,7 +1468,7 @@ public class Control extends Service {
 
                     int try_num = 0;
                     //connect_check = false;
-
+                    IsClientConnecting = true;
                     s_status = "State: Step 2, CLIENT associating GO, enable true:?" + SSID + " remainder #attempt:"
                             + try_num + " Cluster_Name " + Choose_Cluster_Name;
                     Log.d("Miga", "State: Step 2, CLIENT associating GO, enable true:?" + SSID + " remainder #attempt:"
@@ -1501,6 +1503,7 @@ public class Control extends Service {
 
                         @Override
                         public void onFailure(int reason) {//p2p interface連接失敗
+                            String goack=CanIConnect(Choose_Cluster_Name);
                             manager.cancelConnect(channel, new ActionListener() {
                                 @Override
                                 public void onSuccess() {
@@ -1671,7 +1674,13 @@ public class Control extends Service {
             dgskt = new DatagramSocket(IP_port_for_can_connect);
             dgskt.setReuseAddress(true);//For EADDRINUSE (Address already in use) Exception
             if (IsP2Pconnect) {
-                message = WiFiApName +"#"+ WiFiIpAddr + "#" + WantConnectCN;
+                if(IsClientConnecting){//Client正在嘗試連線，但是連線失敗了
+                    message = WiFiApName + "#" + WiFiIpAddr + "#" + WantConnectCN +"#"+"fail";
+                    IsClientConnecting = false;
+                }
+                else {//Client還沒開始連線過
+                    message = WiFiApName + "#" + WiFiIpAddr + "#" + WantConnectCN;
+                }
                 //multicast
                 if (mConnectivityManager != null) {
                     mNetworkInfo = mConnectivityManager.getNetworkInfo(ConnectivityManager.TYPE_WIFI);
@@ -1683,26 +1692,28 @@ public class Control extends Service {
                         Log.v("Miga", "CanIConnect multicsk send message:" + message);
                         s_status = "CanIConnect multicsk send message" + message;
 
-                        if(dgpkt != null){
+                        if (dgpkt != null) {
                             dgskt.receive(dgpkt);
-                            recmessage = new String(bcMsg, 0 , dgpkt.getLength());
+                            recmessage = new String(bcMsg, 0, dgpkt.getLength());
                             //Log.d("Miga","Client get GO's msg:"+recmessage);
-                            if(recmessage.equals("OK")) {//recmessage=="IpReceive" ,用==是比較物件, 在這裡字串比較應該用str.equals(str2);比較好
-                                Log.d("Miga","Client get GO's msg: OK");
+                            if (recmessage.equals("OK")) {//recmessage=="IpReceive" ,用==是比較物件, 在這裡字串比較應該用str.equals(str2);比較好
+                                Log.d("Miga", "Client get GO's msg: OK");
                                 return "OK";
-                            }else if(recmessage.equals("NO")){
-                                Log.d("Miga","Client get GO's msg: NO");
+                            } else if (recmessage.equals("NO")) {
+                                Log.d("Miga", "Client get GO's msg: NO");
                                 return "NO";
-                            }
-                            else{
-                                Log.d("Miga","Client get GO's msg: NotReceive");
+                            } else if (recmessage.equals("remove success")){
+                                Log.d("Miga", "Client get GO's msg: remove success");
+                                return "remove success";
+                            }else {
+                                Log.d("Miga", "Client get GO's msg: NotReceive");
                                 return "NotReceive";
                             }
                         }
                     }
                 }
-                Log.d("Miga","Client get GO's msg: NotReceive");
-                return "NotReceive";//還沒接收到GO回傳的
+            Log.d("Miga", "Client get GO's msg: NotReceive");
+            return "NotReceive";//還沒接收到GO回傳的
             }
         }catch(Exception e){
             e.printStackTrace();
@@ -1745,21 +1756,29 @@ public class Control extends Service {
                             if (!(recMessage[0].equals(WiFiApName))) {//接收到的不是自己,則可以進行IP判斷
                                 //Log.d("Miga", "I got multicast message from:" + recMessagetemp);
                                 //s_status = "I got multicast message from:" + recMessagetemp;
-                                if (CNTable.containsKey(recWantCN)) {//已經在CNTable內了，表示GO或是其他member已經要連了
-                                    sendbackmessage = "NO";
-                                    s_status = "Has in CNTable " + CNTable;
-                                    Log.d("Miga", "Client ask, CanConnect/ Has in CNTable: " + CNTable);
-                                } else {
-                                    sendbackmessage = "OK";
-                                    CNTable.put(recWantCN, 0);
-                                    //for test
-                                    s_status = "Put in CNTable " + CNTable;
-                                    Log.d("Miga", "Client ask, CanConnect/ Put in CNTable: " + CNTable);
+                                if(recMessage.length==4){
+                                    if(recMessage[3].equals("fail")){
+                                        CNTable.remove(Choose_Cluster_Name);
+                                        sendbackmessage = "remove success";
+                                        s_status ="CNTable remove success"+Choose_Cluster_Name;
+                                        Log.d("Miga","CNTable remove success"+Choose_Cluster_Name);
+                                    }
+                                }else {
+                                    if (CNTable.containsKey(recWantCN)) {//已經在CNTable內了，表示GO或是其他member已經要連了
+                                        sendbackmessage = "NO";
+                                        s_status = "Has in CNTable " + CNTable;
+                                        Log.d("Miga", "Client ask, CanConnect/ Has in CNTable: " + CNTable);
+                                    } else {
+                                        sendbackmessage = "OK";
+                                        CNTable.put(recWantCN, 0);
+                                        //for test
+                                        s_status = "Put in CNTable " + CNTable;
+                                        Log.d("Miga", "Client ask, CanConnect/ Put in CNTable: " + CNTable);
+                                    }
                                 }
                                 //unicast 回傳到該wifi ip address,及該port
                                 dgpacket = new DatagramPacket(sendbackmessage.getBytes(), sendbackmessage.length(), InetAddress.getByName(recMessage[1]), IP_port_for_can_connect);
                                 dgsocket.send(dgpacket);
-
                                 Log.d("Miga", "GO send CanIConnect msg to client: " + recMessage[1] + ", " + sendbackmessage);
                             }
 
@@ -1776,7 +1795,6 @@ public class Control extends Service {
             }
         }
     }
-
     //取得p2p ip address
     public static String getLocalIpAddress() {
         try {

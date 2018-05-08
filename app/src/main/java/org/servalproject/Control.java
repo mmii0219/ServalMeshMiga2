@@ -260,6 +260,10 @@ public class Control extends Service {
     private boolean IsGOConnecting = false;//用來表示GO是不是正在嘗試連線
     private boolean IsClientConnecting = false;//用來表示Client是不是正在嘗試連線
 
+    //For controller 20180508
+    static public boolean ControllerAuto = false;
+    private Map<String, Integer> CandidateControllerTable = new HashMap<String, Integer>();//用來讓每個裝置儲存Cluster內其他裝置的SSID及剩餘電量，主要是拿來進行Controller的決定。
+
     public enum RoleFlag {
         NONE(0), GO(1), CLIENT(2), BRIDGE(3), HYBRID(4);//BRIDGE就是之前的RELAY, HYBRID:一邊是GO一邊是Client的身分
         private int index;
@@ -276,6 +280,43 @@ public class Control extends Service {
 
     private List<Step1Data_set> Collect_record;// Wang ,用來儲存裝置彼此交換後的info
     // 0 : none, 1 : go, 2 : client 3: relay
+
+    private List<CandidateController_set> CandController_record;//
+    public class CandidateController_set{
+        private String SSID;
+        private String POWER;
+        public CandidateController_set(String SSID,String POWER){
+            this.SSID = SSID;
+            this.POWER = POWER;
+        }
+        String getSSID() {
+            return this.SSID;
+        }
+        String getPOWER() {
+            return this.POWER;
+        }
+
+        public String toString() {
+            return this.SSID + " " + this.POWER;
+        }
+
+        public int compareTo(CandidateController_set data) {
+            String SSID = data.getSSID();
+            String POWER = data.getPOWER();
+
+            if(Integer.valueOf(this.POWER)<Integer.valueOf(POWER)){
+                return 1;
+            }else if(Integer.valueOf(this.POWER)<Integer.valueOf(POWER)){
+                return -1;
+            }
+            if (this.SSID.compareTo(SSID) < 0) {
+                return 1;
+            } else if (this.SSID.compareTo(SSID) > 0) {
+                return -1;
+            }
+            return 0;
+        }
+    }
 
     public class Step1Data_set {//進行步驟1,選擇GO加入的排序
         private String SSID;
@@ -2471,15 +2512,15 @@ public class Control extends Service {
 
                 while(true){
                     if(RecvMsg_pc!="") {
-                        temp = RecvMsg_pc.split("#");//將message之中有#則分開存到tmep陣列裡;message = WiFiApName + "#" + Cluster_Name + "#" + "5"+ "#" +ROLE;
+                        temp = RecvMsg_pc.split("#");//將message之中有#則分開存到tmep陣列裡;message = WiFiApName + "#" + Cluster_Name + "#" + "5"+"#"+POWER+ "#" +ROLE;
                         if (temp[0] != null && temp[1] != null && temp[2] != null && WiFiApName != null) {
                             if (Newcompare(temp[0], WiFiApName) != 0) {//接收到的data和此裝置的SSID不同; 若A>B則reutrn 1
                                 InetAddress P2PIPAddress = receivedpkt_pc.getAddress();
                                 recv_ip = P2PIPAddress.toString().split("/")[1];//接收傳這個pkt的ip
                                 if(!isreceiveformbridge) {//還沒從bridge接收到ip
-                                    if (temp.length == 4) {//表示有temp3
+                                    if (temp.length == 5) {//表示有temp4
                                         //接收到的info事由BRIDGE傳來的，則將此ip存到自己的IPTable
-                                        if (Integer.valueOf(temp[3]) == RoleFlag.BRIDGE.getIndex()) {
+                                        if (Integer.valueOf(temp[4]) == RoleFlag.BRIDGE.getIndex()) {
                                             //InetAddress P2PIPAddress = receivedpkt_pc.getAddress();
                                             String bridgeip = P2PIPAddress.toString().split("/")[1];//接收BRIDGE的IP
                                             //Log.d("Miga", "Receive ip form BRIDGE: " + bridgeip);
@@ -2543,6 +2584,27 @@ public class Control extends Service {
                                             s_status = "Receive_peer_count/IPTable:" + IPTable;
                                         }
                                     }
+                                    //Log.d("Miga", "Receive_peer_count msg" + RecvMsg_pc);
+                                    //s_status = "Receive_peer_count msg" + RecvMsg_pc;
+                                }
+                                if (!CandidateControllerTable.containsKey(temp[0])) {//CandidateControllerTable留著只是輔助用，用來新增CandController_record的
+                                    CandidateControllerTable.put(temp[0], Integer.valueOf(temp[3]));//SSID跟電池電量
+                                    CandidateController_set data = new CandidateController_set(temp[0], temp[3]);
+                                    if (!CandController_record.contains(data)) {
+                                        CandController_record.add(data);
+                                    }
+                                    //目的應該只是要print出有收集到哪些data
+                                    int obj_num = 0;
+                                    String Collect_contain = "";
+                                    CandidateController_set tmp;
+                                    for (int i = 0; i < CandController_record.size(); i++) {
+                                        tmp = (CandidateController_set) CandController_record.get(i);
+                                        Collect_contain = Collect_contain + obj_num + " : " + tmp.toString() + " ";
+                                        obj_num++;
+                                    }
+                                    Log.d("Miga", "CandController_record" + Collect_contain);
+                                    //s_status = "CandidateControllerTable: " + CandidateControllerTable;
+                                    //Log.d("Miga", "CandidateControllerTable: " + CandidateControllerTable);
                                 }
                                     //Log.v("Miga", "PeerTable:" + PeerTable);
                                     //s_status = "PeerTable:" + PeerTable;
@@ -2551,7 +2613,7 @@ public class Control extends Service {
                                 try {
                                     // relay packet
                                     if (Integer.valueOf(temp[2].trim()) > 0) {
-                                        message = temp[0] + "#" + temp[1] + "#" + temp[2].trim();
+                                        message = temp[0] + "#" + temp[1] + "#" + temp[2].trim()+"#"+temp[3];
                                         sendds = null;
                                         sendds = new DatagramSocket();
                                         try {
@@ -2738,7 +2800,7 @@ public class Control extends Service {
                         int randomnum = randomWithRange(1,4)*1000;
                         Thread.sleep(randomnum);
                         //Log.d("Miga","Sleep:"+randomnum);
-                        message = WiFiApName + "#" + Cluster_Name + "#" + "5";// 0: source SSID 1: cluster name 2: TTL
+                        message = WiFiApName + "#" + Cluster_Name + "#" + "5"+"#"+Integer.toString(power_level);// 0: source SSID 1: cluster name 2: TTL 3:電池電量 //電池電量新增於20180508(Controller判斷用)
 
                         // unicast
                         iterator = IPTable.keySet().iterator();//IPTable的keySet為許多IP所組成
@@ -2753,13 +2815,13 @@ public class Control extends Service {
                         }
                         if(ROLE == RoleFlag.BRIDGE.getIndex()) {//BRIDGE會多一個ROLE是為了讓另個cluster的知道是BRIDGE傳過去的(做IPTable更新用)
                             //for bridge
-                            message = WiFiApName + "#" + Cluster_Name + "#" + "5"+"#"+ROLE;// 0: source SSID 1: cluster name 2: TTL 3:ROLE
+                            message = WiFiApName + "#" + Cluster_Name + "#" + "5"+"#"+Integer.toString(power_level)+"#"+ROLE;// 0: source SSID 1: cluster name 2: TTL 3:電池電量 4:ROLE
                             dp = new DatagramPacket(message.getBytes(), message.length(),
                                     InetAddress.getByName("192.168.49.1"), IP_port_for_peer_counting);
                             sendds.send(dp);//傳給GO
                         }
 
-                        message = WiFiApName + "#" + Cluster_Name + "#" + "5";// 0: source SSID 1: cluster name 2: TTL
+                        message = WiFiApName + "#" + Cluster_Name + "#" + "5"+"#"+Integer.toString(power_level);// 0: source SSID 1: cluster name 2: TTL 3:電池電量;// 0: source SSID 1: cluster name 2: TTL
 
                         //multicast
                         if (mConnectivityManager != null) {
@@ -3141,6 +3203,7 @@ public class Control extends Service {
         }, new IntentFilter(WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION));
 
         Collect_record = new ArrayList<Step1Data_set>();// Wang
+        CandController_record = new ArrayList<CandidateController_set>();// Miga 20180508
         getBatteryCapacity();
         callAsynchronousTask();//Wang 20180427
 
@@ -3332,6 +3395,9 @@ public class Control extends Service {
                             s_status = "GO_SSID: " + GO_SSID;
                         }
                         STATE = StateFlag.ADD_SERVICE.getIndex();//1
+                        //20180508加入Candidate Controller
+                        CandidateController_set self = new CandidateController_set(WiFiApName, String.valueOf(power_level));
+                        CandController_record.add(self);
                     }
                 }
             });

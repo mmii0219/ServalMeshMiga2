@@ -53,16 +53,16 @@
               style="@style/sinstrbold"
               android:layout_below="@+id/sidLabel"/>
 
-          <EditText
-              android:id="@+id/batphoneNumberText"
-              style="@style/sphonesetcontent"
-              android:layout_centerHorizontal="true"
-              android:layout_below="@+id/sidText"
-              android:layout_margin="5dip"
-              android:hint="@string/setphone"
-              android:imeOptions="actionDone"
-              android:inputType="phone"
-              android:maxLength="32" />
+		<EditText
+			android:id="@+id/batphoneNumberText"
+			style="@style/sphonesetcontent"
+			android:layout_below="@+id/sidText"
+			android:layout_centerHorizontal="true"
+			android:layout_margin="5dip"
+			android:hint="@string/setphone"
+			android:imeOptions="actionDone"
+			android:inputType="phone"
+			android:maxLength="32" />
 
           <EditText
               android:id="@+id/batphoneNameText"

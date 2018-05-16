@@ -263,6 +263,7 @@ public class Control extends Service {
     //For controller 20180508
     static public boolean ControllerAuto = false;
     private Map<String, Integer> CandidateControllerTable = new HashMap<String, Integer>();//用來讓每個裝置儲存Cluster內其他裝置的SSID及剩餘電量，主要是拿來進行Controller的決定。
+    private Thread t_Conroller_Thread = null;
 
     public enum RoleFlag {
         NONE(0), GO(1), CLIENT(2), BRIDGE(3), HYBRID(4);//BRIDGE就是之前的RELAY, HYBRID:一邊是GO一邊是Client的身分
@@ -281,7 +282,9 @@ public class Control extends Service {
     private List<Step1Data_set> Collect_record;// Wang ,用來儲存裝置彼此交換後的info
     // 0 : none, 1 : go, 2 : client 3: relay
 
+    //For Controller Start
     private List<CandidateController_set> CandController_record;//
+    //每個裝置都會有，用來儲存所有device的SSID及電量，用來選出controller的
     public class CandidateController_set{
         private String SSID;
         private String POWER;
@@ -317,7 +320,54 @@ public class Control extends Service {
             return 0;
         }
     }
+    //每個裝置都會有，用來儲存自己這個裝置的鄰居SSID及密碼，用來接收Controller指令後，進行抓出連上該device的密碼
+    public class Neighbor_set{
+        private String SSID;
+        private String PSW;
+        public Neighbor_set(String SSID,String PSW){
+            this.SSID = SSID;
+            this.PSW = PSW;
+        }
+        String getSSID() {
+            return this.SSID;
+        }
+        String getPSW() {
+            return this.PSW;
+        }
 
+        public String toString() {
+            return this.SSID + " " + this.PSW;
+        }
+    }
+
+    public class ControllerData_set{
+        private String SSID;
+        private String Neighbor;
+        private String NeighborNum;
+        private String POWER;
+        private String ClusterName;
+        private String WiFiInterface;
+        private String P2PInterface;
+
+        public ControllerData_set(String SSID,String POWER){
+            this.SSID = SSID;
+            this.POWER = POWER;
+        }
+        String getSSID() {
+            return this.SSID;
+        }
+        String getPOWER() {
+            return this.POWER;
+        }
+
+        public String toString() {
+            return this.SSID + " " + this.POWER;
+        }
+    }
+
+
+
+    //For Controller End
     public class Step1Data_set {//進行步驟1,選擇GO加入的排序
         private String SSID;
         private String key;
@@ -3588,6 +3638,11 @@ public class Control extends Service {
             t_CanConnect.start();
         }
 
+        if(t_Conroller_Thread == null){
+            t_Conroller_Thread = new Conroller_Thread();
+            t_Conroller_Thread.start();
+        }
+
 
         // </aqua0722>
         new Task().execute(State.On);
@@ -3720,4 +3775,43 @@ public class Control extends Service {
         return ipAddrStr;
     }
 
+    //20180516 For Controller
+    public class Conroller_Thread extends Thread{
+        private String SSID;
+        public void run() {
+            try {
+                while(true) {
+                    if (ControllerAuto) {
+                        //進行Controller候選人的排序
+                        Collections.sort(CandController_record, new Comparator<CandidateController_set>() {
+                            public int compare(CandidateController_set o1, CandidateController_set o2) {
+                                return o1.compareTo(o2);
+                            }
+                        });
+                        SSID=CandController_record.get(0).getSSID();//取出排序後的第一個，表示他是被選為controller
+
+                        //print出排序後的data, 檢查用
+                        int obj_num = 0;
+                        String Collect_contain = "";
+                        CandidateController_set tmp;
+                        for (int i = 0; i < CandController_record.size(); i++) {
+                            tmp = (CandidateController_set) CandController_record.get(i);
+                            Collect_contain = Collect_contain + obj_num + " : " + tmp.toString() + " ";
+                            obj_num++;
+                        }
+                        Log.d("Miga", "Conroller_Thread/CandController_record" + Collect_contain);
+
+                        if(SSID.equals(WiFiApName)){
+                            Log.d("Miga","I'm the controller");
+                        }
+
+                    }
+                    Thread.sleep(10000);
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+                Log.d("Miga", "Conroller_Thread Exception" + e.toString());
+            }
+        }
+    }
 }

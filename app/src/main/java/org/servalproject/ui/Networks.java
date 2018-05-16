@@ -68,6 +68,7 @@ public class Networks extends Activity implements CompoundButton.OnCheckedChange
     boolean activity_on = true;
     private CheckBox enabled;
     private CheckBox enabledstep2;////Miga 20180409
+    private CheckBox enabledcontroller;////Miga 20180508
     private static final String TAG = "Networks";
     private static boolean WiFiDirectChecked = false;
     private Intent serviceIntent = null;
@@ -551,6 +552,19 @@ public class Networks extends Activity implements CompoundButton.OnCheckedChange
         }
     };
     //Miga End
+    //Miga 20180508
+    private CheckBox.OnCheckedChangeListener chkcontrollerlistener = new CheckBox.OnCheckedChangeListener(){
+        @Override
+        public void onCheckedChanged(CompoundButton buttonView,boolean isChecked) {
+            if(enabledcontroller.isChecked()){
+                WiFiDirectService.ControllerAuto=true;
+                //WiFiDirectService.step2_start_time = Calendar.getInstance().getTimeInMillis();
+            }else if (!enabledcontroller.isChecked()){
+                WiFiDirectService.ControllerAuto=false;
+            }
+        }
+    };
+    //Miga End
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -563,6 +577,10 @@ public class Networks extends Activity implements CompoundButton.OnCheckedChange
         //Miga 20180409
         this.enabledstep2 = (CheckBox) this.findViewById(R.id.enablestep2);
         this.enabledstep2.setOnCheckedChangeListener(chklistener);
+        //Miga End
+        //Miga 20180508
+        this.enabledcontroller = (CheckBox) this.findViewById(R.id.enablecontroller);
+        this.enabledcontroller.setOnCheckedChangeListener(chkcontrollerlistener);
         //Miga End
         this.app = (ServalBatPhoneApplication) this.getApplication();
         this.nm = NetworkManager.getNetworkManager(app);

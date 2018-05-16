@@ -92,8 +92,8 @@ public class SetPhoneNumber extends Activity {
 					protected Boolean doInBackground(Void... params) {
 						try {
 							identity.setDetails(app,
-									number.getText().toString(),
-									name.getText().toString());
+									"030000",
+									name.getText().toString());//"030000"-> number.getText().toString() 20180426 Miga
 
 							// create the serval android acount if it doesn't
 							// already exist

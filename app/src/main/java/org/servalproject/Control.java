@@ -264,6 +264,9 @@ public class Control extends Service {
     static public boolean ControllerAuto = false;
     private Map<String, Integer> CandidateControllerTable = new HashMap<String, Integer>();//用來讓每個裝置儲存Cluster內其他裝置的SSID及剩餘電量，主要是拿來進行Controller的決定。
     private Thread t_Conroller_Thread = null;
+    private boolean IsNeighborCollect = false;//用來判斷是否已蒐集完鄰居的DATA
+    private String NeighborList="";//用來儲存自己neighbor有誰
+    private Integer NeighborListNum=0;//用來儲存自己鄰居有幾個
 
     public enum RoleFlag {
         NONE(0), GO(1), CLIENT(2), BRIDGE(3), HYBRID(4);//BRIDGE就是之前的RELAY, HYBRID:一邊是GO一邊是Client的身分
@@ -320,6 +323,8 @@ public class Control extends Service {
             return 0;
         }
     }
+
+    private List<Neighbor_set> Neighbor_record;
     //每個裝置都會有，用來儲存自己這個裝置的鄰居SSID及密碼，用來接收Controller指令後，進行抓出連上該device的密碼
     public class Neighbor_set{
         private String SSID;
@@ -349,19 +354,37 @@ public class Control extends Service {
         private String WiFiInterface;
         private String P2PInterface;
 
-        public ControllerData_set(String SSID,String POWER){
+        public ControllerData_set(String SSID,String Neighbor,String NeighborNum,String POWER,String ClusterName,String WiFiInterface,String P2PInterface){
             this.SSID = SSID;
+            this.Neighbor = Neighbor;
+            this.NeighborNum = NeighborNum;
             this.POWER = POWER;
+            this.ClusterName = ClusterName;
+            this.WiFiInterface = WiFiInterface;
+            this.P2PInterface = P2PInterface;
         }
         String getSSID() {
             return this.SSID;
         }
+        String getNeighbor() {
+            return this.Neighbor;
+        }
+        String getNeighborNum() {
+            return this.NeighborNum;
+        }
         String getPOWER() {
             return this.POWER;
         }
+        String getClusterName() {
+            return this.ClusterName;
+        }
+        String getWiFiInterface() {
+            return this.WiFiInterface;
+        }
+        String getP2PInterface() { return this.P2PInterface; }
 
         public String toString() {
-            return this.SSID + " " + this.POWER;
+            return this.SSID + " "+this.Neighbor+ " "+this.NeighborNum+" "+ this.POWER+ " "+this.ClusterName+ " "+this.WiFiInterface+ " "+this.P2PInterface;
         }
     }
 
@@ -830,12 +853,47 @@ public class Control extends Service {
                     //GO = record.get("GO").toString();
                     //Log.d("Miga", "WiFi_Connect/Insert data");
 
-                    if (!Name.equals(Cluster_Name)) {//只儲存不同Cluster的device資料
-                        Step1Data_set data = new Step1Data_set(SSID, key, Name, PEER, MAC, POWER, GroupPEER, DROLE);
-                        if (!Collect_record.contains(data)) {
-                            Collect_record.add(data);
+                    //20180516 For controller
+                    if(ControllerAuto){
+                        if(!IsNeighborCollect) {//還沒蒐集過資料才進來，避免重複儲存相同的資料到Neighbor_record
+                            Neighbor_set data = new Neighbor_set(SSID, key);
+                            if (!Neighbor_record.contains(data)) {
+                                Neighbor_record.add(data);
+                            }
+                            if(NeighborList==""){
+                                NeighborList += SSID+"$";
+                            }else{
+                                if(NeighborList.indexOf(SSID)!=-1) {//有包含
+                                }else{
+                                    NeighborList += SSID+"$";
+                                    //Log.d("Miga","NeighborList: "+NeighborList);
+                                }
+                            }
+                        }
+                    }else {//沒有要執行Controller則直接進來這裡；若要執行Controller則不須進來
+                        if (!Name.equals(Cluster_Name)) {//只儲存不同Cluster的device資料
+                            Step1Data_set data = new Step1Data_set(SSID, key, Name, PEER, MAC, POWER, GroupPEER, DROLE);
+                            if (!Collect_record.contains(data)) {
+                                Collect_record.add(data);
+                            }
                         }
                     }
+                }
+                if(ControllerAuto){
+                    IsNeighborCollect = true;
+                    //目的應該只是要print出有收集到哪些data
+                    int obj_num = 0;
+                    String Collect_contain = "";
+                    Neighbor_set tmp;
+                    for (int i = 0; i < Neighbor_record.size(); i++) {
+                        tmp = (Neighbor_set) Neighbor_record.get(i);
+                        Collect_contain = Collect_contain + obj_num + " : " + tmp.toString() + " ";
+                        obj_num++;
+                    }
+                    Log.d("Miga", "WiFi_Connect/Neighbor_record: " + Collect_contain);
+                    NeighborListNum = Neighbor_record.size();
+                    Log.d("Miga","NeighborListNum: "+NeighborListNum +", NeighborList: "+NeighborList);
+                    return;//資料蒐集結束
                 }
                 //也加入自己的data
                 Step1Data_set self = new Step1Data_set(WiFiApName, GOpasswd, Cluster_Name,
@@ -3254,6 +3312,7 @@ public class Control extends Service {
 
         Collect_record = new ArrayList<Step1Data_set>();// Wang
         CandController_record = new ArrayList<CandidateController_set>();// Miga 20180508
+        Neighbor_record = new ArrayList<Neighbor_set>();
         getBatteryCapacity();
         callAsynchronousTask();//Wang 20180427
 
@@ -3803,6 +3862,11 @@ public class Control extends Service {
 
                         if(SSID.equals(WiFiApName)){
                             Log.d("Miga","I'm the controller");
+
+                            while(!IsNeighborCollect){
+                                ;//等待蒐集完Neighbor資料才繼續往下做
+                            }
+                            Log.d("Miga","Collect Neighbor data OK!");
                         }
 
                     }

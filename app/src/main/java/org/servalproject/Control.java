@@ -879,12 +879,47 @@ public class Control extends Service {
                     //GO = record.get("GO").toString();
                     //Log.d("Miga", "WiFi_Connect/Insert data");
 
-                    if (!Name.equals(Cluster_Name)) {//只儲存不同Cluster的device資料
-                        Step1Data_set data = new Step1Data_set(SSID, key, Name, PEER, MAC, POWER, GroupPEER, DROLE);
-                        if (!Collect_record.contains(data)) {
-                            Collect_record.add(data);
+                    //20180516 For controller
+                    if(ControllerAuto){
+                        if(!IsNeighborCollect) {//還沒蒐集過資料才進來，避免重複儲存相同的資料到Neighbor_record
+                            Neighbor_set data = new Neighbor_set(SSID, key);
+                            if (!Neighbor_record.contains(data)) {
+                                Neighbor_record.add(data);
+                            }
+                            if(NeighborList==""){
+                                NeighborList += SSID+"$";
+                            }else{
+                                if(NeighborList.indexOf(SSID)!=-1) {//有包含
+                                }else{
+                                    NeighborList += SSID+"$";
+                                    //Log.d("Miga","NeighborList: "+NeighborList);
+                                }
+                            }
+                        }
+                    }else {//沒有要執行Controller則直接進來這裡；若要執行Controller則不須進來
+                        if (!Name.equals(Cluster_Name)) {//只儲存不同Cluster的device資料
+                            Step1Data_set data = new Step1Data_set(SSID, key, Name, PEER, MAC, POWER, GroupPEER, DROLE);
+                            if (!Collect_record.contains(data)) {
+                                Collect_record.add(data);
+                            }
                         }
                     }
+                }
+                if(ControllerAuto){
+                    IsNeighborCollect = true;
+                    //目的應該只是要print出有收集到哪些data
+                    int obj_num = 0;
+                    String Collect_contain = "";
+                    Neighbor_set tmp;
+                    for (int i = 0; i < Neighbor_record.size(); i++) {
+                        tmp = (Neighbor_set) Neighbor_record.get(i);
+                        Collect_contain = Collect_contain + obj_num + " : " + tmp.toString() + " ";
+                        obj_num++;
+                    }
+                    //Log.d("Miga", "WiFi_Connect/Neighbor_record: " + Collect_contain);
+                    NeighborListNum = Neighbor_record.size();
+                    Log.d("Miga","WiFi_Connect/NeighborListNum: "+NeighborListNum +", NeighborList: "+NeighborList);
+                    return;//資料蒐集結束
                 }
                 //也加入自己的data
                 Step1Data_set self = new Step1Data_set(WiFiApName, GOpasswd, Cluster_Name,
@@ -3889,7 +3924,6 @@ public class Control extends Service {
                         }
 
                     }
-                    Thread.sleep(10000);
                 }
             } catch (Exception e) {
                 e.printStackTrace();

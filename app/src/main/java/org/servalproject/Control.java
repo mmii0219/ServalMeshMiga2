@@ -279,6 +279,7 @@ public class Control extends Service {
     private DatagramPacket receivedpkt_cinfo;
     private DatagramSocket receivedskt_cinfo;//unicast
     private String RecvMsg_cinfo="";
+    private Integer TotaldevicesNum=0;//用來儲存總共在這個cluster內有幾個裝置，主要是給controller進行判斷說資料是否都已蒐集完全
 
     //For Controller Start
     private List<CandidateController_set> CandController_record;
@@ -346,7 +347,9 @@ public class Control extends Service {
         }
     }
 
-    private List<ControllerData_set> Controller_record;
+    private List<ControllerData_set> Controller_record;//用來儲存所有資料
+    private List<ControllerData_set> first_round_Controller_record;//用來儲存第一階段的資料(排序過後的)
+
     public class ControllerData_set{
         private String SSID;
         private String Neighbor;
@@ -396,7 +399,31 @@ public class Control extends Service {
 
             return false;
         }
+
+        public int FirstRoundcompareTo(ControllerData_set data) {//先根據鄰居數量在根據電量，已少的為優先
+            String SSID = data.getSSID();
+            String POWER = data.getPOWER();
+            String NeighborNum = data.getNeighborNum();
+            //少的排前面
+            if(Integer.valueOf(this.NeighborNum)>Integer.valueOf(NeighborNum)){
+                return 1;
+            }else if(Integer.valueOf(this.NeighborNum)<Integer.valueOf(NeighborNum)){
+                return -1;
+            }
+            if(Integer.valueOf(this.POWER)>Integer.valueOf(POWER)){
+                return 1;
+            }else if(Integer.valueOf(this.POWER)<Integer.valueOf(POWER)){
+                return -1;
+            }
+            if (this.SSID.compareTo(SSID) < 0) {
+                return 1;
+            } else if (this.SSID.compareTo(SSID) > 0) {
+                return -1;
+            }
+            return 0;
+        }
     }
+
 
     //For Controller End
 
@@ -887,11 +914,11 @@ public class Control extends Service {
                                 Neighbor_record.add(data);
                             }
                             if(NeighborList==""){
-                                NeighborList += SSID+"$";
+                                NeighborList += SSID+"@";
                             }else{
                                 if(NeighborList.indexOf(SSID)!=-1) {//有包含
                                 }else{
-                                    NeighborList += SSID+"$";
+                                    NeighborList += SSID+"@";
                                     //Log.d("Miga","NeighborList: "+NeighborList);
                                 }
                             }
@@ -3356,6 +3383,7 @@ public class Control extends Service {
         CandController_record = new ArrayList<CandidateController_set>();// Miga 20180508
         Neighbor_record = new ArrayList<Neighbor_set>();
         Controller_record = new ArrayList<ControllerData_set>();
+        first_round_Controller_record = new ArrayList<ControllerData_set>();
         getBatteryCapacity();
         callAsynchronousTask();//Wang 20180427
 
@@ -3880,6 +3908,10 @@ public class Control extends Service {
     //20180518 For Controller
     public class Conroller_Thread extends Thread{
         private String SSID;
+        int obj_num = 0;
+        String Collect_contain = "";
+        CandidateController_set tmp;
+        ControllerData_set tmp_con;
         public void run() {
             try {
                 while(true) {
@@ -3903,16 +3935,14 @@ public class Control extends Service {
                         SSID=CandController_record.get(0).getSSID();//取出排序後的第一個，表示他是被選為controller
 
                         //print出排序後的data, 檢查用
-                        int obj_num = 0;
-                        String Collect_contain = "";
-                        CandidateController_set tmp;
                         for (int i = 0; i < CandController_record.size(); i++) {
                             tmp = (CandidateController_set) CandController_record.get(i);
                             Collect_contain = Collect_contain + obj_num + " : " + tmp.toString() + " ";
                             obj_num++;
                         }
                         Log.d("Miga", "Conroller_Thread/CandController_record" + Collect_contain);
-
+                        Collect_contain="";obj_num=0;//初始化，下面要用
+                        TotaldevicesNum = CandController_record.size();
                         if(SSID.equals(WiFiApName)){
                             IsController = true;//這個裝置是Controller
                             Log.d("Miga","I'm the controller");
@@ -3920,7 +3950,35 @@ public class Control extends Service {
                             while(!IsNeighborCollect){
                                 ;//等待蒐集完Neighbor資料才繼續往下做
                             }
-                            Log.d("Miga","Collect Neighbor data OK!");
+
+                            while(!(TotaldevicesNum==Controller_record.size())){
+                                //controller還沒蒐集完所有資料
+                            }
+
+                            //controller已蒐集完所有資料
+                            Log.d("Miga", "Collect Neighbor data OK!");
+                            first_round_Controller_record.clear();//清除前面的，避免重複儲存
+                            for(int i = 0 ; i < Controller_record.size(); i++) {
+                                first_round_Controller_record.add(Controller_record.get(i));
+                            }
+                            //進行first round排序，peer, power少的優先
+                            Collections.sort(first_round_Controller_record, new Comparator<ControllerData_set>() {
+                                public int compare(ControllerData_set o1, ControllerData_set o2) {
+                                    return o1.FirstRoundcompareTo(o2);
+                                }
+                            });
+
+                            //print出排序後的data, 檢查用
+                            for (int i = 0; i < first_round_Controller_record.size(); i++) {
+                                tmp_con = (ControllerData_set) first_round_Controller_record.get(i);
+                                Collect_contain = Collect_contain + obj_num + " : " + tmp_con.toString() + " ";
+                                obj_num++;
+                            }
+                            Log.d("Miga", "Conroller_Thread/first_round_Controller_record" + Collect_contain);
+                            Collect_contain="";obj_num=0;
+
+                            //開始處理每個Device配對問題
+                            First_Round();
                         }
 
                     }
@@ -3930,6 +3988,73 @@ public class Control extends Service {
                 Log.d("Miga", "Conroller_Thread Exception" + e.toString());
             }
         }
+    }
+
+    public void First_Round (){
+        ControllerData_set tmp,tempprint;
+        String[] tempNeighbor;
+        int obj_num = 0;
+        String Collect_contain = "";
+
+
+        for(int i =0 ; i < first_round_Controller_record.size(); i++){
+            tempNeighbor = first_round_Controller_record.get(i).getNeighbor().split("@");
+            if(Integer.valueOf(first_round_Controller_record.get(i).NeighborNum) == 1 ){
+                if(!IsTheSameCN(tempNeighbor[0],first_round_Controller_record.get(i).getClusterName())) {//CN不相同才能連
+                    //Log.d("Miga", "before edit: " + first_round_Controller_record.get(i).toString());
+                    //只有一個鄰居，直接連他
+                    tmp = new ControllerData_set(first_round_Controller_record.get(i).getSSID(), first_round_Controller_record.get(i).getNeighbor(),
+                            first_round_Controller_record.get(i).getNeighborNum(), first_round_Controller_record.get(i).getPOWER(),
+                            first_round_Controller_record.get(i).getSSID(), tempNeighbor[0], "None");
+                    first_round_Controller_record.set(i, tmp);
+                    //Log.d("Miga", "before edit: " + first_round_Controller_record.get(i).toString());
+                    update_Neighbor_data(tempNeighbor[0], "X", "X", "X", first_round_Controller_record.get(i).getSSID(), "X", "GO");
+                }
+            }
+        }
+        //print出排序後的data, 檢查用
+        for (int i = 0; i < first_round_Controller_record.size(); i++) {
+            tempprint = (ControllerData_set) first_round_Controller_record.get(i);
+            Collect_contain = Collect_contain + obj_num + " : " + tempprint.toString() + " ";
+            obj_num++;
+        }
+        Log.d("Miga", "First_Round/first_round_Controller_record" + Collect_contain);
+    }
+    //每個裝置做完一次改變後，也要去更新neighbor的
+    public void update_Neighbor_data(String SSID,String Neighbor,String NeighborNum,String POWER,String ClusterName,String WiFiInterface,String P2PInterface){
+        ControllerData_set tmp;
+        for( int i =0; i<first_round_Controller_record.size();i++){
+            if(SSID.equals(first_round_Controller_record.get(i).getSSID())){
+                //抓出要更新的
+                //只有一個鄰居，直接連他
+                //Log.d("Miga","update_Neighbor_data/before edit: "+first_round_Controller_record.get(i).toString());
+                //傳入的值若是"X"，則表示不做更新
+                tmp = new ControllerData_set((SSID.equals("X"))?first_round_Controller_record.get(i).getSSID():SSID,
+                        (Neighbor.equals("X"))?first_round_Controller_record.get(i).getNeighbor():Neighbor,
+                        (NeighborNum.equals("X"))?first_round_Controller_record.get(i).getNeighborNum():NeighborNum,
+                        (POWER.equals("X"))?first_round_Controller_record.get(i).getPOWER():POWER,
+                        (ClusterName.equals("X"))?first_round_Controller_record.get(i).getClusterName():ClusterName,
+                        (WiFiInterface.equals("X"))?first_round_Controller_record.get(i).getWiFiInterface():WiFiInterface,
+                        (P2PInterface.equals("X"))?first_round_Controller_record.get(i).getP2PInterface():P2PInterface
+                );
+                first_round_Controller_record.set(i,tmp);
+                //Log.d("Miga","update_Neighbor_data/before edit: "+first_round_Controller_record.get(i).toString());
+                break;
+            }
+        }
+    }
+    //檢查neighbor和自己的CN是不是一樣
+    public boolean IsTheSameCN(String NeighborSSID, String myCN){
+        for( int i =0; i<first_round_Controller_record.size();i++){
+            if(NeighborSSID.equals(first_round_Controller_record.get(i).getSSID())){
+                if(myCN.equals(first_round_Controller_record.get(i).getClusterName())){
+                    return true;//Neighbor和自己的CN是一樣的
+                }
+                else
+                    return false;//Neighbor和自己的CN不同
+            }
+        }
+        return false;
     }
 
     public class Send_info extends Thread {
@@ -4006,7 +4131,6 @@ public class Control extends Service {
             }
         }
     }
-    //20180314 可成功使用multi, uni接收並relay(GO) pkt出去
     public class Receive_info extends Thread {
         private byte[] lMsg,buf;
         private DatagramPacket receivedp, senddp;
@@ -4052,7 +4176,7 @@ public class Control extends Service {
                                 if(!isAddMyself) {
                                     //也加入自己的data
                                     ControllerData_set self = new ControllerData_set(WiFiApName, NeighborList, Integer.toString(NeighborListNum),
-                                            String.valueOf(power_level), "None", "None", "None");
+                                            String.valueOf(power_level), WiFiApName, "None", "None");
                                     if (!Controller_record.contains(self)) {
                                         Controller_record.add(self);
                                     }

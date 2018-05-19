@@ -4210,6 +4210,11 @@ public class Control extends Service {
 
                         }
 
+                        //for BRIDGE，20180519解決BRIDGE無法傳送給GO的問題
+                        dp = new DatagramPacket(message.getBytes(), message.length(),
+                                InetAddress.getByName("192.168.49.1"), IP_port_controller_collect);
+                        senddsk.send(dp);
+
                         //multicast
                         if (mConnectivityManager != null) {
                             mNetworkInfo = mConnectivityManager.getNetworkInfo(ConnectivityManager.TYPE_WIFI);

@@ -280,6 +280,20 @@ public class Control extends Service {
     private DatagramSocket receivedskt_cinfo;//unicast
     private String RecvMsg_cinfo="";
     private Integer TotaldevicesNum=0;//用來儲存總共在這個cluster內有幾個裝置，主要是給controller進行判斷說資料是否都已蒐集完全
+    private boolean IsReceiveFromCon = false;//用來判斷是否接收到從Controller傳送過來的新連線資訊，主要是要讓Receive_info/Send_info中斷
+    private boolean IsReceiveMyself = false;//用來判斷是否已從Controller那邊收到自己的新的連線
+    private boolean IsSecondRoundOver = false;//用來判斷第二階段是否已完畢
+    //For controller send new connect info
+    private Thread t_Send_info_new_connect = null;
+    private Thread t_Receive_info_new_connect = null;
+    private Thread t_Receive_info_multi_new_connect = null;
+    private Thread t_Receive_info_uni_new_connect = null;
+    private static int IP_port_controller_new_connect = 2222;//
+    private MulticastSocket recvControllerNewConnectSocket;//Miga
+    private byte[] lMsg_cinfo_nwconnect;
+    private DatagramPacket receivedpkt_cinfo_nwconnect;
+    private DatagramSocket receivedskt_cinfo_nwconnect;//unicast
+    private String RecvMsg_cinfo_nwconnect="";
 
     //For Controller Start
     private List<CandidateController_set> CandController_record;
@@ -2647,6 +2661,19 @@ public class Control extends Service {
             Log.d("Miga", "JoinUpdateControllerMultiCst Exception:" + e);
         }
     }
+    //加入controller 傳送新的連線info的 multicast, 於Initial()呼叫
+    public void JoinControllerNewConnectMultiCst(){
+
+        try {
+            recvControllerNewConnectSocket = new MulticastSocket(6795);
+            multicgroup = InetAddress.getByName("224.0.0.3"); //客戶客戶端將自己加入到指定的multicast group中,這樣就能夠收到來自該組的消息
+            recvControllerNewConnectSocket.joinGroup(new InetSocketAddress(multicgroup, 6795), p2p0);//用p2p0 interface來接收muticast pkt
+            Log.d("Miga", "I join controller NewConnect multicast group success" + multicgroup);
+
+        }catch (Exception e){
+            Log.d("Miga", "JoinControllerNewConnectMultiCst Exception:" + e);
+        }
+    }
     // Miga, For multicast ------------End-------------
 
     //20180314 可成功使用multi, uni接收並relay(GO) pkt出去
@@ -3463,6 +3490,7 @@ public class Control extends Service {
             JoinUpdateCNMultiCst();//加入更新的Cluster Name multicast,為了讓手動建立的role更新CN
             JoinUpdateCCMultiCst();//用來讓Client在Step2傳送欲連線的info給GO
             JoinUpdateControllerMultiCst();//用來進行controller資料的傳輸
+            JoinControllerNewConnectMultiCst();//用來讓controller傳送新的連線資訊
             ROLE = RoleFlag.NONE.getIndex();
 
             manager.requestGroupInfo(channel, new WifiP2pManager.GroupInfoListener() {
@@ -3943,7 +3971,7 @@ public class Control extends Service {
                         Log.d("Miga", "Conroller_Thread/CandController_record" + Collect_contain);
                         Collect_contain="";obj_num=0;//初始化，下面要用
                         TotaldevicesNum = CandController_record.size();
-                        if(SSID.equals(WiFiApName)){
+                        if(SSID.equals(WiFiApName)){//是controller
                             IsController = true;//這個裝置是Controller
                             Log.d("Miga","I'm the controller");
 
@@ -3979,6 +4007,12 @@ public class Control extends Service {
 
                             //開始處理每個Device配對問題
                             First_Round();
+                        }else{
+                            //開啟用來接收controller要傳送新的連線info的thread
+                            if (t_Receive_info_new_connect == null) {
+                                t_Receive_info_new_connect = new Receive_info_new_connect();
+                                t_Receive_info_new_connect.start();
+                            }
                         }
 
                     }
@@ -3995,7 +4029,7 @@ public class Control extends Service {
         ControllerData_set tmp,tempprint;
         String[] tempNeighbor,ConnectNeighbor;
         int obj_num = 0;
-        String Collect_contain = "",tempNeighbor_canconnect="";
+        String Collect_contain = "",tempNeighbor_canconnect="",oldCN="";
 
 
         for(int i =0 ; i < first_round_Controller_record.size(); i++){
@@ -4025,6 +4059,7 @@ public class Control extends Service {
                 Log.d("Miga",first_round_Controller_record.get(i).getSSID()+" tempNeighbor_canconnect: " +tempNeighbor_canconnect);
                 //檢查完鄰居CN以及電量後，去選擇可以連的鄰居
                 if(!tempNeighbor_canconnect.equals("")||tempNeighbor_canconnect!=""){//表示有鄰居候選人
+                    oldCN = first_round_Controller_record.get(i).getClusterName();//先把現在要連的這個人的舊有的ClusterName存起來
                     //取鄰居最高的那個
                     ConnectNeighbor = tempNeighbor_canconnect.split("@");
                     //去連最高的
@@ -4035,6 +4070,7 @@ public class Control extends Service {
                     //Log.d("Miga", "before edit: " + first_round_Controller_record.get(i).toString());
                     //更新鄰居的info
                     update_Neighbor_data(ConnectNeighbor[0], "X", "X", "X", ConnectNeighbor[0], "X", "GO");
+                    UpdateSameCNNeighbor(oldCN,ConnectNeighbor[0]);//把oldCluster相關的Device的clustername都更新為新的CN
 
                 }
             }
@@ -4060,8 +4096,20 @@ public class Control extends Service {
                 Each_Cluster_name.add(first_round_Controller_record.get(i).getClusterName());
             }
         }
-        if(Each_Cluster_name.size()==1)
-            Log.d("Miga","After Second Round, it only one cluster!");
+        if(Each_Cluster_name.size()==1) {
+            Log.d("Miga", "After Second Round, it only one cluster!");
+            IsSecondRoundOver = true;//可以開始進行新的資訊傳送
+            //開啟只有Controller才可以使用的thread，是用來讓controller最後傳送新的連線info用
+            if (t_Send_info_new_connect == null) {
+                t_Send_info_new_connect = new Send_info_new_connect();
+                t_Send_info_new_connect.start();
+            }
+            //這邊先保留controller沒有開啟Receive_info_new_connect
+            /*if (t_Receive_info_new_connect == null) {
+                t_Receive_info_new_connect = new Receive_info_new_connect();
+                t_Receive_info_new_connect.start();
+            }*/
+        }
         else
             Log.d("Miga","There are many cluster need to combine ...");
 
@@ -4115,6 +4163,16 @@ public class Control extends Service {
         }
         return false;
     }
+    //連上其他人之後，更新舊有的相同CN內其他member的CN
+    public void UpdateSameCNNeighbor(String OldCN,String NewCN){
+        for ( int i = 0; i< first_round_Controller_record.size(); i++){
+            if(OldCN.equals(first_round_Controller_record.get(i).getClusterName())){
+                update_Neighbor_data(first_round_Controller_record.get(i).getSSID(), "X", "X", "X", NewCN, "X", "X");
+            }
+        }
+    }
+
+
     public class Send_info extends Thread {
         private DatagramPacket dp;
         private DatagramSocket senddsk;
@@ -4259,7 +4317,61 @@ public class Control extends Service {
                                 }
                                 Log.d("Miga", "Receive_info/Controller_record: " + Collect_contain);
                                 Thread.sleep(4000);
+                            }else{//不是Controller的要幫忙Relay packet
+                                try {
+                                    message = RecvMsg_cinfo;
+                                    // unicast
+                                    iterator = IPTable.keySet().iterator();
+                                    while (iterator.hasNext()) {
+                                        tempkey = iterator.next().toString();
+                                        if (!recv_ip.equals(tempkey)) {
+                                            senddp = new DatagramPacket(message.getBytes(), message.length(),
+                                                    InetAddress.getByName(tempkey), IP_port_controller_collect);
+                                            senddsk.send(senddp);
+                                            //Log.d("Miga", "(Relay)Send the message: " + message + " to " + tempkey);
+                                            //s_status = "State : (Relay)Send the message: " + message + " to " + tempkey;
+                                        }
+                                    }
+                                    //for BRIDGE
+                                    senddp = new DatagramPacket(message.getBytes(), message.length(),
+                                            InetAddress.getByName("192.168.49.1"), IP_port_controller_collect);
+                                    senddsk.send(senddp);
+
+                                } catch (Exception e) {
+                                    e.printStackTrace();
+                                    Log.d("Miga", "Receive_info Exception : at relay pkt (unicast) _" + e.toString());
+                                    s_status = "Receive_info Exception : at relay pkt (unicast) _" + e.toString();
+                                }
+                                try {
+                                    if (ROLE == RoleFlag.HYBRID.getIndex() || ROLE == RoleFlag.BRIDGE.getIndex()) {
+                                        if (ROLE == RoleFlag.HYBRID.getIndex()) {//20180501 新增HYBRID轉傳給CLIENT的，測試可成功
+                                            // broadcast
+                                            senddp = new DatagramPacket(message.getBytes(), message.length(),
+                                                    InetAddress.getByName("192.168.49.255"), IP_port_controller_collect);
+                                            senddsk.send(senddp);
+                                        }
+                                        //multicast
+                                        if (mConnectivityManager != null) {
+                                            mNetworkInfo = mConnectivityManager.getNetworkInfo(ConnectivityManager.TYPE_WIFI);
+                                            if (mNetworkInfo.isConnected()) {
+                                                multicgroup = InetAddress.getByName("224.0.0.3");//指定multicast要發送的group
+                                                multicsk = new MulticastSocket(6793);//6790: for peertable update
+                                                msgPkt = new DatagramPacket(message.getBytes(), message.length(), multicgroup, 6793);
+                                                multicsk.send(msgPkt);
+                                                if (multicsk != null)
+                                                    multicsk.close();
+                                                //Log.v("Miga", "multicsk send message:" + message);
+                                                //s_status = "multicsk send message" + message;
+                                            }
+                                        }
+                                    }
+                                } catch (Exception e) {
+                                    e.printStackTrace();
+                                    Log.d("Miga", "Receive_info Exception : at relay pkt (multicast) _" + e.toString());
+                                    s_status = "Receive_info Exception : at relay pkt (multicast) _" + e.toString();
+                                }
                             }
+
                         }else if(!IsNeighborCollect) {//在鄰居資料蒐集完之前都是跑舊的
                             if (temp[0] != null && temp[1] != null && temp[2] != null && WiFiApName != null) {
                                 if (Newcompare(temp[0], WiFiApName) != 0) {//接收到的data和此裝置的SSID不同; 若A>B則reutrn 1
@@ -4359,10 +4471,10 @@ public class Control extends Service {
                                                 s_status = "Receive_info Exception : at relay pkt (multicast) _" + e.toString();
                                             }
                                         }
-                                        if (multicsk != null)
+                                        /*if (multicsk != null)
                                             multicsk.close();
                                         if (senddsk != null)
-                                            senddsk.close();
+                                            senddsk.close();*/
                                     } catch (Exception e) {
                                         e.printStackTrace();
                                         Log.d("Miga", "Receive_info Exception : // relay packet _" + e.toString());
@@ -4446,4 +4558,246 @@ public class Control extends Service {
         }
     }
 
+
+    public class Send_info_new_connect extends Thread{
+
+        private DatagramPacket dp;
+        private DatagramSocket senddsk;
+        private Iterator iterator;
+        private String message, tempkey;
+        MulticastSocket multicsk;//Miga20180313
+        DatagramPacket msgPkt;//Miga
+
+        public void run(){
+            try{
+                senddsk = null;
+                senddsk = new DatagramSocket();
+                //Log.d("Miga","Send_info onpe");
+                while(ControllerAuto) {
+                    //Log.d("Miga","Send_info ControllerAuto");
+                    if (IsSecondRoundOver) {
+                        //Log.d("Miga","Send_info IsP2Pconnect");
+                        int randomnum = randomWithRange(2,4)*1000;
+                        Thread.sleep(randomnum);
+                        message = "Send_info_new_connect test!!!!!!!!!!";
+                        //message = WiFiApName + "#" + NeighborList + "#" +Integer.toString(NeighborListNum) + "#" + Integer.toString(power_level) + "#" + WiFiApName + "#" + "None"+ "#" + "None";//SSID,Neighbor,Neighbornum,Power,ClusterName,WiFi interface,P2P interface
+
+                        // unicast
+                        iterator = IPTable.keySet().iterator();//IPTable的keySet為許多IP所組成
+                        while (iterator.hasNext()) {
+                            tempkey = iterator.next().toString();
+                            dp = new DatagramPacket(message.getBytes(), message.length(),
+                                    InetAddress.getByName(tempkey), IP_port_controller_new_connect);
+                            senddsk.send(dp);//一一傳送給IPTable內的所有IP
+                            //Log.v("Miga", "I send unicast message:" + message);
+                            //s_status="I send unicast message:"+message;
+
+                        }
+
+                        //multicast
+                        if (mConnectivityManager != null) {
+                            mNetworkInfo = mConnectivityManager.getNetworkInfo(ConnectivityManager.TYPE_WIFI);
+                            if (mNetworkInfo.isConnected()) {
+                                multicgroup = InetAddress.getByName("224.0.0.3");//指定multicast要發送的group
+                                multicsk = new MulticastSocket(6795);//6795: for controller
+                                msgPkt = new DatagramPacket(message.getBytes(), message.length(), multicgroup, 6795);
+                                multicsk.send(msgPkt);
+                                //Log.v("Miga", "multicsk send message:" + message);
+                                //s_status = "multicsk send message" + message;
+                            }
+                        }
+
+                    }
+                    //Thread.sleep(1000);
+
+                }
+            } catch (SocketException e) {
+                e.printStackTrace();
+                Log.d("Miga", "Send_info_new_connect Socket exception" + e.toString());
+            } catch (IOException e) {
+                e.printStackTrace();
+                Log.d("Miga", "Send_info_new_connect IOException" + e.toString());
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+                Log.d("Miga", "Send_info_new_connect InterruptedException" + e.toString());
+            } catch (Exception e) {
+                e.printStackTrace();
+                Log.d("Miga", "Send_info_new_connect other exception" + e.toString());
+            } finally {
+                if (senddsk != null) {
+                    senddsk.close();
+                    Log.d("Miga", "Send_info_new_connect senddsk is close");
+                }
+            }
+        }
+    }
+    public class Receive_info_new_connect extends Thread{
+
+        private DatagramPacket senddp;
+        private DatagramSocket senddsk;
+        private Iterator iterator;
+        private String message, tempkey, recv_ip;
+        private String[] temp;
+        private MulticastSocket multicsk;//Miga20180312
+        private DatagramPacket msgPkt;//Miga
+        private boolean isAddMyself = false;
+
+
+        public void run(){
+            try{
+                //20180326將multicast和unicast的socket分成兩個thread來寫，小的thread所接收的data會用global來儲存，再由此thread來處理資料。
+                lMsg_cinfo_nwconnect = new byte[8192];
+                receivedpkt_cinfo_nwconnect = new DatagramPacket(lMsg_cinfo_nwconnect, lMsg_cinfo_nwconnect.length);//接收到的message會存在IMsg
+                receivedskt_cinfo_nwconnect = new DatagramSocket(IP_port_controller_new_connect);
+                if (t_Receive_info_uni_new_connect == null) {
+                    t_Receive_info_uni_new_connect = new Receive_info_uni_new_connect();
+                    t_Receive_info_uni_new_connect.start();
+                }
+                if (t_Receive_info_multi_new_connect == null) {
+                    t_Receive_info_multi_new_connect = new Receive_info_multi_new_connect();
+                    t_Receive_info_multi_new_connect.start();
+                }
+                while(ControllerAuto){
+
+                    if(RecvMsg_cinfo_nwconnect!="") {
+                        //Log.d("Miga","RECE:"+RecvMsg_cinfo);
+                        //temp = RecvMsg_cinfo_nwconnect.split("#");//將message之中有#則分開存到tmep陣列裡;message = WiFiApName + "#" + Cluster_Name + "#" + "5"+"#"+POWER+ "#" +ROLE;
+                        //RecvMsg_cinfo_nwconnect
+                        Log.d("Miga","Receive_info_new_connect: "+RecvMsg_cinfo_nwconnect);
+                        try {
+                            // relay packet
+                            //message = temp[0] + "#" + temp[1] + "#" + temp[2].trim() + "#" + temp[3];
+                            message = RecvMsg_cinfo_nwconnect;
+                            senddsk = null;
+                            senddsk = new DatagramSocket();
+                            try {
+                                // unicast
+                                iterator = IPTable.keySet().iterator();
+                                while (iterator.hasNext()) {
+                                    tempkey = iterator.next().toString();
+                                    senddp = new DatagramPacket(message.getBytes(), message.length(),
+                                            InetAddress.getByName(tempkey), IP_port_controller_new_connect);
+                                    senddsk.send(senddp);
+                                    //Log.d("Miga", "(Relay)Send the message: " + message + " to " + tempkey);
+                                    //s_status = "State : (Relay)Send the message: " + message + " to " + tempkey;
+
+                                }
+                                //for BRIDGE
+                                senddp = new DatagramPacket(message.getBytes(), message.length(),
+                                        InetAddress.getByName("192.168.49.1"), IP_port_controller_new_connect);
+                                senddsk.send(senddp);
+
+                            } catch (Exception e) {
+                                e.printStackTrace();
+                                Log.d("Miga", "Receive_info_new_connect Exception : at relay pkt (unicast) _" + e.toString());
+                                s_status = "Receive_info_new_connect Exception : at relay pkt (unicast) _" + e.toString();
+                            }
+                            try {
+                                if (ROLE == RoleFlag.HYBRID.getIndex() || ROLE == RoleFlag.BRIDGE.getIndex()) {
+                                    if (ROLE == RoleFlag.HYBRID.getIndex()) {//20180501 新增HYBRID轉傳給CLIENT的，測試可成功
+                                        // broadcast
+                                        senddp = new DatagramPacket(message.getBytes(), message.length(),
+                                                InetAddress.getByName("192.168.49.255"), IP_port_controller_new_connect);
+                                        senddsk.send(senddp);
+                                    }
+                                    //multicast
+                                    if (mConnectivityManager != null) {
+                                        mNetworkInfo = mConnectivityManager.getNetworkInfo(ConnectivityManager.TYPE_WIFI);
+                                        if (mNetworkInfo.isConnected()) {
+                                            multicgroup = InetAddress.getByName("224.0.0.3");//指定multicast要發送的group
+                                            multicsk = new MulticastSocket(6795);//6790: for peertable update
+                                            msgPkt = new DatagramPacket(message.getBytes(), message.length(), multicgroup, 6795);
+                                            multicsk.send(msgPkt);
+                                            if (multicsk != null)
+                                                multicsk.close();
+                                            //Log.v("Miga", "multicsk send message:" + message);
+                                            //s_status = "multicsk send message" + message;
+                                        }
+                                    }
+                                }
+                            } catch (Exception e) {
+                                e.printStackTrace();
+                                Log.d("Miga", "Receive_info_new_connect Exception : at relay pkt (multicast) _" + e.toString());
+                                s_status = "Receive_info_new_connect Exception : at relay pkt (multicast) _" + e.toString();
+                            }
+
+                            if (multicsk != null)
+                                multicsk.close();
+                            if (senddsk != null)
+                                senddsk.close();
+                        } catch (Exception e) {
+                            e.printStackTrace();
+                            Log.d("Miga", "Receive_info_new_connect Exception : // relay packet _" + e.toString());
+                            s_status = "Receive_info_new_connect Exception : // relay packet _" + e.toString();
+                        }
+                    }
+                }
+            }catch (SocketException e) {
+                e.printStackTrace();
+                Log.d("Miga", "Receive_info_new_connect Socket exception" + e.toString());
+            } catch (IOException e) {
+                e.printStackTrace();
+                Log.d("Miga", "Receive_info_new_connect IOException" + e.toString());
+            } catch (Exception e) {
+                e.printStackTrace();
+                Log.d("Miga", "Receive_info_new_connect Exception" + e.toString());
+            } finally {
+                if (receiveds != null) {
+                    receiveds.close();
+                    Log.d("Miga", "Receive_info_new_connect receiveds is close");
+                }
+                if (senddsk != null) {
+                    senddsk.close();
+                    Log.d("Miga", "Receive_info_new_connect sendds is close");
+                }
+                /*if (recvControllerSocket != null) {
+                    recvControllerSocket.close();
+                    Log.d("Miga", "Receive_info recvControllerSocket is close");
+                }*/
+            }
+        }
+    }
+    public class Receive_info_uni_new_connect extends Thread{
+        public void run(){
+            try {
+                while(true){//20180518 Controller 開啟時
+                    if (IsP2Pconnect&&ControllerAuto) {
+                        if (receivedpkt_cinfo_nwconnect != null) {
+                            //20180411註解下面，因為ROLE==GO時也會用unicast接收
+                            //if (ROLE == RoleFlag.CLIENT.getIndex() || ROLE == RoleFlag.HYBRID.getIndex()|| ROLE == RoleFlag.BRIDGE.getIndex()) {
+                            //unicast
+                            receivedskt_cinfo_nwconnect.receive(receivedpkt_cinfo_nwconnect);//把接收到的data存在receivedp.
+                            RecvMsg_cinfo_nwconnect = new String(lMsg_cinfo_nwconnect, 0, receivedpkt_cinfo_nwconnect.getLength());//將接收到的IMsg轉換成String型態
+                            //Log.d("Miga", "I got message from unicast" + RecvMsg_cinfo);
+                            //s_status = "I got message from unicast" + RecvMsg_cinfo;
+                            //}
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+                Log.d("Miga", "Receive_info_uni_new_connect Exception" + e.toString());
+            }
+        }
+    }
+    public class Receive_info_multi_new_connect extends Thread{
+        public void run(){
+            try {
+                while(true){//20180518 Controller
+                    if (IsP2Pconnect&&ControllerAuto) {
+                        if (receivedpkt_cinfo_nwconnect != null) {
+                            if (ROLE == RoleFlag.GO.getIndex() || ROLE == RoleFlag.HYBRID.getIndex()) {
+                                //multicast
+                                recvControllerNewConnectSocket.receive(receivedpkt_cinfo_nwconnect);//recvControllerSocket port:6790
+                                RecvMsg_cinfo_nwconnect = new String(lMsg_cinfo_nwconnect, 0, receivedpkt_cinfo_nwconnect.getLength());//將接收到的IMsg轉換成String型態
+                            }
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+                Log.d("Miga", "Receive_info_multi_new_connect Exception" + e.toString());
+            }
+        }
+    }
 }

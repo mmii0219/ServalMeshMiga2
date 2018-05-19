@@ -3990,6 +3990,7 @@ public class Control extends Service {
         }
     }
 
+    //20180519 大致上已完成，但尚未寫多個cluster串起來之後CN的更新
     public void First_Round (){
         ControllerData_set tmp,tempprint;
         String[] tempNeighbor,ConnectNeighbor;
@@ -4029,11 +4030,11 @@ public class Control extends Service {
                     //去連最高的
                     tmp = new ControllerData_set(first_round_Controller_record.get(i).getSSID(), first_round_Controller_record.get(i).getNeighbor(),
                             first_round_Controller_record.get(i).getNeighborNum(), first_round_Controller_record.get(i).getPOWER(),
-                            tempNeighbor[0], ConnectNeighbor[0], "None");
+                            ConnectNeighbor[0], ConnectNeighbor[0], "None");
                     first_round_Controller_record.set(i, tmp);
                     //Log.d("Miga", "before edit: " + first_round_Controller_record.get(i).toString());
                     //更新鄰居的info
-                    update_Neighbor_data(ConnectNeighbor[0], "X", "X", "X", tempNeighbor[0], "X", "GO");
+                    update_Neighbor_data(ConnectNeighbor[0], "X", "X", "X", ConnectNeighbor[0], "X", "GO");
 
                 }
             }
@@ -4047,9 +4048,22 @@ public class Control extends Service {
         }
         Log.d("Miga", "First_Round/first_round_Controller_record" + Collect_contain);
         //Second Round
+        Second_Round();
     }
 
     public void Second_Round(){
+
+        List<String> Each_Cluster_name = new ArrayList<String>();//儲存不同的CN
+
+        for(int i = 0; i< first_round_Controller_record.size(); i ++ ){
+            if(!Each_Cluster_name.contains(first_round_Controller_record.get(i).getClusterName())){
+                Each_Cluster_name.add(first_round_Controller_record.get(i).getClusterName());
+            }
+        }
+        if(Each_Cluster_name.size()==1)
+            Log.d("Miga","After Second Round, it only one cluster!");
+        else
+            Log.d("Miga","There are many cluster need to combine ...");
 
     }
     //每個裝置做完一次改變後，也要去更新neighbor的

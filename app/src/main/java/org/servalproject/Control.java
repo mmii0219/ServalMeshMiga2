@@ -3992,9 +3992,9 @@ public class Control extends Service {
 
     public void First_Round (){
         ControllerData_set tmp,tempprint;
-        String[] tempNeighbor;
+        String[] tempNeighbor,ConnectNeighbor;
         int obj_num = 0;
-        String Collect_contain = "";
+        String Collect_contain = "",tempNeighbor_canconnect="";
 
 
         for(int i =0 ; i < first_round_Controller_record.size(); i++){
@@ -4005,12 +4005,39 @@ public class Control extends Service {
                     //只有一個鄰居，直接連他
                     tmp = new ControllerData_set(first_round_Controller_record.get(i).getSSID(), first_round_Controller_record.get(i).getNeighbor(),
                             first_round_Controller_record.get(i).getNeighborNum(), first_round_Controller_record.get(i).getPOWER(),
-                            first_round_Controller_record.get(i).getSSID(), tempNeighbor[0], "None");
+                            tempNeighbor[0], tempNeighbor[0], "None");
                     first_round_Controller_record.set(i, tmp);
                     //Log.d("Miga", "before edit: " + first_round_Controller_record.get(i).toString());
-                    update_Neighbor_data(tempNeighbor[0], "X", "X", "X", first_round_Controller_record.get(i).getSSID(), "X", "GO");
+                    update_Neighbor_data(tempNeighbor[0], "X", "X", "X", tempNeighbor[0], "X", "GO");
+                }
+            }else{//鄰居有兩個以上
+                for( int j =0; j< tempNeighbor.length; j++){//j是鄰居，鄰居數量若只有一個的話就是length==1
+                    if(!IsTheSameCN(tempNeighbor[j],first_round_Controller_record.get(i).getClusterName())){//檢查鄰居的CN是否相同
+                        //不相同才能列入考慮連線的
+                        //檢查鄰居的電量有沒有比自己高
+                        if(NeighborBatterHigher(tempNeighbor[j],first_round_Controller_record.get(i).getPOWER())){
+                            //電量比自己高
+                            tempNeighbor_canconnect = tempNeighbor_canconnect + tempNeighbor[j]+"@";//這裡就是儲存可以被連線的鄰居候選人
+                        }
+                    }
+                }
+                Log.d("Miga",first_round_Controller_record.get(i).getSSID()+" tempNeighbor_canconnect: " +tempNeighbor_canconnect);
+                //檢查完鄰居CN以及電量後，去選擇可以連的鄰居
+                if(!tempNeighbor_canconnect.equals("")||tempNeighbor_canconnect!=""){//表示有鄰居候選人
+                    //取鄰居最高的那個
+                    ConnectNeighbor = tempNeighbor_canconnect.split("@");
+                    //去連最高的
+                    tmp = new ControllerData_set(first_round_Controller_record.get(i).getSSID(), first_round_Controller_record.get(i).getNeighbor(),
+                            first_round_Controller_record.get(i).getNeighborNum(), first_round_Controller_record.get(i).getPOWER(),
+                            tempNeighbor[0], ConnectNeighbor[0], "None");
+                    first_round_Controller_record.set(i, tmp);
+                    //Log.d("Miga", "before edit: " + first_round_Controller_record.get(i).toString());
+                    //更新鄰居的info
+                    update_Neighbor_data(ConnectNeighbor[0], "X", "X", "X", tempNeighbor[0], "X", "GO");
+
                 }
             }
+            tempNeighbor_canconnect="";
         }
         //print出排序後的data, 檢查用
         for (int i = 0; i < first_round_Controller_record.size(); i++) {
@@ -4019,6 +4046,11 @@ public class Control extends Service {
             obj_num++;
         }
         Log.d("Miga", "First_Round/first_round_Controller_record" + Collect_contain);
+        //Second Round
+    }
+
+    public void Second_Round(){
+
     }
     //每個裝置做完一次改變後，也要去更新neighbor的
     public void update_Neighbor_data(String SSID,String Neighbor,String NeighborNum,String POWER,String ClusterName,String WiFiInterface,String P2PInterface){
@@ -4056,7 +4088,19 @@ public class Control extends Service {
         }
         return false;
     }
-
+    //檢查neighbor電量有沒有比我高，有回true
+    public boolean NeighborBatterHigher(String NeighborSSID, String myBattery){
+        for( int i =0; i<first_round_Controller_record.size();i++){
+            if(NeighborSSID.equals(first_round_Controller_record.get(i).getSSID())){
+                if(Integer.valueOf(first_round_Controller_record.get(i).getPOWER()) >= Integer.valueOf(myBattery)){
+                    return true;//Neighbor電量比我高
+                }
+                else
+                    return false;//Neighbor電量比我低
+            }
+        }
+        return false;
+    }
     public class Send_info extends Thread {
         private DatagramPacket dp;
         private DatagramSocket senddsk;
@@ -4078,7 +4122,7 @@ public class Control extends Service {
                         Thread.sleep(randomnum);
                         //Log.d("Miga","Sleep:"+randomnum);
                         if( ControllerAuto && IsNeighborCollect ){ //要執行controller且已經蒐集完鄰居的資料了
-                            message = WiFiApName + "#" + NeighborList + "#" +Integer.toString(NeighborListNum) + "#" + Integer.toString(power_level) + "#" + "None" + "#" + "None"+ "#" + "None";//SSID,Neighbor,Neighbornum,Power,ClusterName,WiFi interface,P2P interface
+                            message = WiFiApName + "#" + NeighborList + "#" +Integer.toString(NeighborListNum) + "#" + Integer.toString(power_level) + "#" + WiFiApName + "#" + "None"+ "#" + "None";//SSID,Neighbor,Neighbornum,Power,ClusterName,WiFi interface,P2P interface
                         }else if(!IsNeighborCollect) {//還沒蒐集完neighbor就跑舊有info
                             message = WiFiApName + "#" + Cluster_Name + "#" + "5" + "#" + Integer.toString(power_level);// 0: source SSID 1: cluster name 2: TTL 3:電池電量 //電池電量新增於20180508(Controller判斷用)
                         }

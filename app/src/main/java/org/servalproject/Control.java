@@ -1995,6 +1995,7 @@ public class Control extends Service {
                                     }
                                 }
                                 //unicast 回傳到該wifi ip address,及該port
+                                dgpacket = null;//20180520
                                 dgpacket = new DatagramPacket(sendbackmessage.getBytes(), sendbackmessage.length(), InetAddress.getByName(recMessage[1]), IP_port_for_can_connect);
                                 dgsocket.send(dgpacket);
                                 Log.d("Miga", "GO send CanIConnect msg to client: " + recMessage[1] + ", " + sendbackmessage);
@@ -2491,6 +2492,8 @@ public class Control extends Service {
                 dgskt = new DatagramSocket(IP_port_for_IPSave);
                 while(!isSuccessSend) {//還沒成功接收,則繼續接收GO回傳的msg
                     //Thread.sleep(20000);
+                    dgskt = null; // 20180520 關socket
+                    dgskt = new DatagramSocket(IP_port_for_IPSave); // 20180520 關socket
                     multicgroup = InetAddress.getByName("224.0.0.3");//指定multicast要發送的group
                     multicsk = new MulticastSocket(6789);
                     message =  WiFiApName+"#" +WiFiIpAddr;
@@ -2502,6 +2505,7 @@ public class Control extends Service {
 
                     if(dgpkt != null){
                         dgskt.receive(dgpkt);
+                        dgskt.close(); // 20180520 關socket
                         recmessage = new String(bcMsg, 0 , dgpkt.getLength());
 
                         recMessage = recmessage.split("#");//[0]:WiFiApName(SSID),[1]: WifiIP
@@ -2844,6 +2848,7 @@ public class Control extends Service {
                                                     mNetworkInfo = mConnectivityManager.getNetworkInfo(ConnectivityManager.TYPE_WIFI);
                                                     if (mNetworkInfo.isConnected()) {
                                                         multicgroup = InetAddress.getByName("224.0.0.3");//指定multicast要發送的group
+                                                        multicsk = null;// 20180520 關socket
                                                         multicsk = new MulticastSocket(6790);//6790: for peertable update
                                                         msgPkt = new DatagramPacket(message.getBytes(), message.length(), multicgroup, 6790);
                                                         multicsk.send(msgPkt);
@@ -2862,8 +2867,8 @@ public class Control extends Service {
                                     }
                                     if(multicsk!=null)
                                         multicsk.close();
-                                    if(sendds!=null)
-                                        sendds.close();
+                                    //if(sendds!=null)
+                                        sendds.close();// 20180520 關socket
                                 }catch (Exception e){
                                     e.printStackTrace();
                                     Log.d("Miga", "Receive_peer_count Exception : // relay packet _" + e.toString());
@@ -2991,6 +2996,8 @@ public class Control extends Service {
                         Thread.sleep(600000);//sleep 600sec , 10mins
                     }
                     if (IsP2Pconnect) {
+                        sendds = null;// 20180520 關socket
+                        sendds = new DatagramSocket();// 20180520 關socket
                         int randomnum = randomWithRange(1,4)*1000;
                         Thread.sleep(randomnum);
                         //Log.d("Miga","Sleep:"+randomnum);
@@ -3022,6 +3029,7 @@ public class Control extends Service {
                             mNetworkInfo = mConnectivityManager.getNetworkInfo(ConnectivityManager.TYPE_WIFI);
                             if (mNetworkInfo.isConnected()) {
                                 multicgroup = InetAddress.getByName("224.0.0.3");//指定multicast要發送的group
+                                multicsk = null;// 20180520 關socket
                                 multicsk = new MulticastSocket(6790);//6790: for peertable update
                                 msgPkt = new DatagramPacket(message.getBytes(), message.length(), multicgroup, 6790);
                                 multicsk.send(msgPkt);
@@ -3046,6 +3054,9 @@ public class Control extends Service {
                         }
                         //Log.v("Miga", "PeerTable:" + PeerTable);
                         //s_status = "PeerTable:" + PeerTable;
+                        sendds.close();// 20180520 關socket
+                        if(multicsk!=null)
+                            multicsk.close();// 20180520 關socket
                     }
                     //Thread.sleep(1000);
 
@@ -3091,6 +3102,8 @@ public class Control extends Service {
                         Time_Stamp="123456";//暫定
                         message = WiFiApName + "#" + Cluster_Name + "#" + ROLE + "#" + IsReceiveGoInfo + "#"
                                 + Time_Stamp + "#" + "5";
+                        sendds = null;// 20180520 關socket
+                        sendds = new DatagramSocket();// 20180520 關socket
                         // unicast
                         iterator = IPTable.keySet().iterator();//IPTable的keySet為許多IP所組成
                         while (iterator.hasNext()) {
@@ -3109,6 +3122,7 @@ public class Control extends Service {
                                 mNetworkInfo = mConnectivityManager.getNetworkInfo(ConnectivityManager.TYPE_WIFI);
                                 if (mNetworkInfo.isConnected()) {
                                     multicgroup = InetAddress.getByName("224.0.0.3");//指定multicast要發送的group
+                                    multicsk = null;// 20180520 關socket
                                     multicsk = new MulticastSocket(6791);//6790: for CN update
                                     msgPkt = new DatagramPacket(message.getBytes(), message.length(), multicgroup, 6791);
                                     multicsk.send(msgPkt);
@@ -3117,6 +3131,9 @@ public class Control extends Service {
                                 }
                             }
                         }
+                        sendds.close();// 20180520 關socket
+                        if(multicsk!=null)
+                            multicsk.close();// 20180520 關socket
                     }
                     int randomnum = randomWithRange(2,4)*1000;
                     Thread.sleep(randomnum);
@@ -4237,6 +4254,8 @@ public class Control extends Service {
                         }else if(!IsNeighborCollect) {//還沒蒐集完neighbor就跑舊有info
                             message = WiFiApName + "#" + Cluster_Name + "#" + "5" + "#" + Integer.toString(power_level);// 0: source SSID 1: cluster name 2: TTL 3:電池電量 //電池電量新增於20180508(Controller判斷用)
                         }
+                        senddsk = null;// 20180520 關socket
+                        senddsk = new DatagramSocket();// 20180520 關socket
                         // unicast
                         iterator = IPTable.keySet().iterator();//IPTable的keySet為許多IP所組成
                         while (iterator.hasNext()) {
@@ -4259,6 +4278,7 @@ public class Control extends Service {
                             mNetworkInfo = mConnectivityManager.getNetworkInfo(ConnectivityManager.TYPE_WIFI);
                             if (mNetworkInfo.isConnected()) {
                                 multicgroup = InetAddress.getByName("224.0.0.3");//指定multicast要發送的group
+                                multicsk = null;// 20180520 關socket
                                 multicsk = new MulticastSocket(6793);//6793: for controller
                                 msgPkt = new DatagramPacket(message.getBytes(), message.length(), multicgroup, 6793);
                                 multicsk.send(msgPkt);
@@ -4266,6 +4286,9 @@ public class Control extends Service {
                                 //s_status = "multicsk send message" + message;
                             }
                         }
+                        senddsk.close();// 20180520 關socket
+                        if(multicsk!=null)
+                            multicsk.close();// 20180520 關socket
 
                     }
                     //Thread.sleep(1000);
@@ -4364,6 +4387,8 @@ public class Control extends Service {
                             }else{//不是Controller的要幫忙Relay packet
                                 try {
                                     message = RecvMsg_cinfo;
+                                    senddsk = null;
+                                    senddsk = new DatagramSocket();
                                     // unicast
                                     iterator = IPTable.keySet().iterator();
                                     while (iterator.hasNext()) {
@@ -4399,11 +4424,11 @@ public class Control extends Service {
                                             mNetworkInfo = mConnectivityManager.getNetworkInfo(ConnectivityManager.TYPE_WIFI);
                                             if (mNetworkInfo.isConnected()) {
                                                 multicgroup = InetAddress.getByName("224.0.0.3");//指定multicast要發送的group
+                                                multicsk = null;
                                                 multicsk = new MulticastSocket(6793);//6790: for peertable update
                                                 msgPkt = new DatagramPacket(message.getBytes(), message.length(), multicgroup, 6793);
                                                 multicsk.send(msgPkt);
-                                                if (multicsk != null)
-                                                    multicsk.close();
+                                                multicsk.close();
                                                 //Log.v("Miga", "multicsk send message:" + message);
                                                 //s_status = "multicsk send message" + message;
                                             }
@@ -4414,6 +4439,9 @@ public class Control extends Service {
                                     Log.d("Miga", "Receive_info Exception : at relay pkt (multicast) _" + e.toString());
                                     s_status = "Receive_info Exception : at relay pkt (multicast) _" + e.toString();
                                 }
+                                senddsk.close();// 20180520 關socket
+                                if(multicsk!=null)
+                                    multicsk.close();// 20180520 關socket
                             }
 
                         }else if(!IsNeighborCollect) {//在鄰居資料蒐集完之前都是跑舊的
@@ -4499,11 +4527,11 @@ public class Control extends Service {
                                                         mNetworkInfo = mConnectivityManager.getNetworkInfo(ConnectivityManager.TYPE_WIFI);
                                                         if (mNetworkInfo.isConnected()) {
                                                             multicgroup = InetAddress.getByName("224.0.0.3");//指定multicast要發送的group
+                                                            multicsk = null;
                                                             multicsk = new MulticastSocket(6793);//6790: for peertable update
                                                             msgPkt = new DatagramPacket(message.getBytes(), message.length(), multicgroup, 6793);
                                                             multicsk.send(msgPkt);
-                                                            if (multicsk != null)
-                                                                multicsk.close();
+                                                            multicsk.close();
                                                             //Log.v("Miga", "multicsk send message:" + message);
                                                             //s_status = "multicsk send message" + message;
                                                         }
@@ -4515,6 +4543,9 @@ public class Control extends Service {
                                                 s_status = "Receive_info Exception : at relay pkt (multicast) _" + e.toString();
                                             }
                                         }
+                                        senddsk.close();// 20180520 關socket
+                                        if(multicsk!=null)
+                                            multicsk.close();// 20180520 關socket
                                         /*if (multicsk != null)
                                             multicsk.close();
                                         if (senddsk != null)
@@ -4624,6 +4655,8 @@ public class Control extends Service {
                         int randomnum = randomWithRange(2,4)*1000;
                         Thread.sleep(randomnum);
                         message = "Send_info_new_connect test!!!!!!!!!!";
+                        senddsk = null;
+                        senddsk = new DatagramSocket();
                         //message = WiFiApName + "#" + NeighborList + "#" +Integer.toString(NeighborListNum) + "#" + Integer.toString(power_level) + "#" + WiFiApName + "#" + "None"+ "#" + "None";//SSID,Neighbor,Neighbornum,Power,ClusterName,WiFi interface,P2P interface
 
                         // unicast
@@ -4643,6 +4676,7 @@ public class Control extends Service {
                             mNetworkInfo = mConnectivityManager.getNetworkInfo(ConnectivityManager.TYPE_WIFI);
                             if (mNetworkInfo.isConnected()) {
                                 multicgroup = InetAddress.getByName("224.0.0.3");//指定multicast要發送的group
+                                multicsk = null;// 20180520 關socket
                                 multicsk = new MulticastSocket(6795);//6795: for controller
                                 msgPkt = new DatagramPacket(message.getBytes(), message.length(), multicgroup, 6795);
                                 multicsk.send(msgPkt);
@@ -4653,6 +4687,9 @@ public class Control extends Service {
 
                     }
                     //Thread.sleep(1000);
+                    senddsk.close();// 20180520 關socket
+                    if(multicsk!=null)
+                        multicsk.close();// 20180520 關socket
 
                 }
             } catch (SocketException e) {
@@ -4749,11 +4786,12 @@ public class Control extends Service {
                                         mNetworkInfo = mConnectivityManager.getNetworkInfo(ConnectivityManager.TYPE_WIFI);
                                         if (mNetworkInfo.isConnected()) {
                                             multicgroup = InetAddress.getByName("224.0.0.3");//指定multicast要發送的group
+                                            multicsk = null;// 20180520 關socket
                                             multicsk = new MulticastSocket(6795);//6790: for peertable update
                                             msgPkt = new DatagramPacket(message.getBytes(), message.length(), multicgroup, 6795);
                                             multicsk.send(msgPkt);
-                                            if (multicsk != null)
-                                                multicsk.close();
+                                            //if (multicsk != null)
+                                            multicsk.close();
                                             //Log.v("Miga", "multicsk send message:" + message);
                                             //s_status = "multicsk send message" + message;
                                         }
@@ -4765,10 +4803,9 @@ public class Control extends Service {
                                 s_status = "Receive_info_new_connect Exception : at relay pkt (multicast) _" + e.toString();
                             }
 
-                            if (multicsk != null)
-                                multicsk.close();
-                            if (senddsk != null)
-                                senddsk.close();
+                            senddsk.close();// 20180520 關socket
+                            if(multicsk!=null)
+                                multicsk.close();// 20180520 關socket
                         } catch (Exception e) {
                             e.printStackTrace();
                             Log.d("Miga", "Receive_info_new_connect Exception : // relay packet _" + e.toString());

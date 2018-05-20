@@ -333,7 +333,16 @@ public class Control extends Service {
             }
             return 0;
         }
+
+        public boolean equals(Object object) {//判斷SSID是不是一樣的，若是表示已經有存了
+            CandidateController_set other = (CandidateController_set) object;
+            if (this.SSID.equals(other.SSID) == true)
+                return true;
+
+            return false;
+        }
     }
+    private List<CandidateController_set> CandNeighbor_record;//從鄰居當中挑出一個電量最高的
 
     private List<Neighbor_set> Neighbor_record;
     //每個裝置都會有，用來儲存自己這個裝置的鄰居SSID及密碼，用來接收Controller指令後，進行抓出連上該device的密碼
@@ -3437,6 +3446,7 @@ public class Control extends Service {
         Neighbor_record = new ArrayList<Neighbor_set>();
         Controller_record = new ArrayList<ControllerData_set>();
         first_round_Controller_record = new ArrayList<ControllerData_set>();
+        CandNeighbor_record = new ArrayList<CandidateController_set>();
         getBatteryCapacity();
         callAsynchronousTask();//Wang 20180427
 
@@ -4084,9 +4094,10 @@ public class Control extends Service {
     //20180519 大致上已完成，但尚未寫多個cluster串起來之後CN的更新
     public void First_Round (){
         ControllerData_set tmp,tempprint;
-        String[] tempNeighbor,ConnectNeighbor;
+        CandidateController_set neighborprint;
+        String[] tempNeighbor;//,ConnectNeighbor;
         int obj_num = 0;
-        String Collect_contain = "",tempNeighbor_canconnect="",oldCN="";
+        String Collect_contain = "",tempNeighbor_canconnect="",oldCN="",ConnectNeighbor="";
 
 
         for(int i =0 ; i < first_round_Controller_record.size(); i++){
@@ -4113,21 +4124,37 @@ public class Control extends Service {
                         }
                     }
                 }
-                Log.d("Miga",first_round_Controller_record.get(i).getSSID()+" tempNeighbor_canconnect: " +tempNeighbor_canconnect);
+                Collections.sort(CandNeighbor_record, new Comparator<CandidateController_set>() {
+                    public int compare(CandidateController_set o1, CandidateController_set o2) {
+                        return o1.compareTo(o2);
+                    }
+                });
+
+                ConnectNeighbor = CandNeighbor_record.get(0).getSSID();//取出排序後的第一個，表示他是被選為最高電量的neighbor
+
+                //print出排序後的data, 檢查用
+                for (int k = 0; k < CandNeighbor_record.size(); k++) {
+                    neighborprint = (CandidateController_set) CandNeighbor_record.get(k);
+                    Collect_contain = Collect_contain + obj_num + " : " + neighborprint.toString() + " ";
+                    obj_num++;
+                }
+                Log.d("Miga", "First_Round/CandNeighbor_record" + Collect_contain);
+                Collect_contain="";obj_num=0;//初始化，下面要用
+                //Log.d("Miga",first_round_Controller_record.get(i).getSSID()+" tempNeighbor_canconnect: " +tempNeighbor_canconnect);
                 //檢查完鄰居CN以及電量後，去選擇可以連的鄰居
                 if(!tempNeighbor_canconnect.equals("")||tempNeighbor_canconnect!=""){//表示有鄰居候選人
                     oldCN = first_round_Controller_record.get(i).getClusterName();//先把現在要連的這個人的舊有的ClusterName存起來
                     //取鄰居最高的那個
-                    ConnectNeighbor = tempNeighbor_canconnect.split("@");
+                    //ConnectNeighbor = tempNeighbor_canconnect.split("@");
                     //去連最高的
                     tmp = new ControllerData_set(first_round_Controller_record.get(i).getSSID(), first_round_Controller_record.get(i).getNeighbor(),
                             first_round_Controller_record.get(i).getNeighborNum(), first_round_Controller_record.get(i).getPOWER(),
-                            ConnectNeighbor[0], ConnectNeighbor[0], "None");
+                            ConnectNeighbor, ConnectNeighbor, "None");
                     first_round_Controller_record.set(i, tmp);
                     //Log.d("Miga", "before edit: " + first_round_Controller_record.get(i).toString());
                     //更新鄰居的info
-                    update_Neighbor_data(ConnectNeighbor[0], "X", "X", "X", ConnectNeighbor[0], "X", "GO");
-                    UpdateSameCNNeighbor(oldCN,ConnectNeighbor[0]);//把oldCluster相關的Device的clustername都更新為新的CN
+                    update_Neighbor_data(ConnectNeighbor, "X", "X", "X", ConnectNeighbor, "X", "GO");
+                    UpdateSameCNNeighbor(oldCN,ConnectNeighbor);//把oldCluster相關的Device的clustername都更新為新的CN
 
                 }
             }
@@ -4212,6 +4239,11 @@ public class Control extends Service {
         for( int i =0; i<first_round_Controller_record.size();i++){
             if(NeighborSSID.equals(first_round_Controller_record.get(i).getSSID())){
                 if(Integer.valueOf(first_round_Controller_record.get(i).getPOWER()) >= Integer.valueOf(myBattery)){
+                    CandidateController_set data = new CandidateController_set(NeighborSSID, first_round_Controller_record.get(i).getPOWER());
+                    if (!CandNeighbor_record.contains(data)) {//將電量比自己高的Neighbor放入
+                        if(!CandNeighbor_record.equals(data))
+                            CandNeighbor_record.add(data);
+                    }
                     return true;//Neighbor電量比我高
                 }
                 else

@@ -3636,6 +3636,7 @@ public class Control extends Service {
                                 tempCN=group.getNetworkName().split("-");
                             }
                             Cluster_Name = tempCN[2];
+                            GOpasswd = getDevicePwd(WiFiApName);//Bridge手動設置的密碼要去抓預設儲存好的才抓的到20180520
                             //Cluster_Name = group.getNetworkName();
                         }
                         else {
@@ -4880,5 +4881,18 @@ public class Control extends Service {
                 Log.d("Miga", "Receive_info_multi_new_connect Exception" + e.toString());
             }
         }
+    }
+    //取得該裝置的密碼，用來讓其他裝置連線用。這裡會寫這個主要是因為Bridge手動設置之後，因為兩端都連了別人，因此會造成不知道自己的密碼是甚麼的問題。
+    public String getDevicePwd(String SSID){
+        if(SSID.equals("Android_4a9e"))
+            return "Udpseqpr";
+        else if(SSID.equals("Android_e9dd"))
+            return "6jq1pSN6";
+        else if(SSID.equals("Android_9722"))
+            return "73EYTubA";
+        else
+            return "dontkown";
+
+
     }
 }

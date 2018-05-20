@@ -260,6 +260,8 @@ public class Control extends Service {
     private boolean IsGOConnecting = false;//用來表示GO是不是正在嘗試連線
     private boolean IsClientConnecting = false;//用來表示Client是不是正在嘗試連線
 
+    private BroadcastReceiver receiver_device_change = null;
+    private String thisDeviceName;
     //For controller 20180508
     static public boolean ControllerAuto = false;
     private Map<String, Integer> CandidateControllerTable = new HashMap<String, Integer>();//用來讓每個裝置儲存Cluster內其他裝置的SSID及剩餘電量，主要是拿來進行Controller的決定。
@@ -3368,6 +3370,13 @@ public class Control extends Service {
             }
         }, new IntentFilter(WifiManager.SCAN_RESULTS_AVAILABLE_ACTION));
 
+        registerReceiver(receiver_device_change = new BroadcastReceiver() {//註冊用來接收peer discovery的peer數量變化的結果
+            @Override
+            public void onReceive(Context c, Intent intent) {
+                WifiP2pDevice device = intent.getParcelableExtra(WifiP2pManager.EXTRA_WIFI_P2P_DEVICE);
+                thisDeviceName = device.deviceName;
+            }
+        }, new IntentFilter(WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION ));
 
         // Experiment
         NumRound = 1;
@@ -3484,6 +3493,7 @@ public class Control extends Service {
     }
     //Miga for device initial create
     public class  Initial extends Thread{
+        String [] tempCN,tempSSID;
         public void run() {
             JoinUpdateIPMultiCst();//加入multicast group,為了讓GO來接收連上他的client向他傳送的ip address(ip用來更新IPTable)
             JoinUpdatePeerMultiCst();//加入multicast group,為了讓所有member來更新peer table
@@ -3498,10 +3508,16 @@ public class Control extends Service {
                 public void onGroupInfoAvailable(WifiP2pGroup group) {
                     if (group != null) {
                         GOpasswd = group.getPassphrase();
-                        WiFiApName = group.getNetworkName();
+                        //20180520為了解決BRIDGE會抓錯的問題，因此將SSID以及CN都改為單純開頭是Android_xxxx的
+                        if(group.getNetworkName()!=""||!group.getNetworkName().equals("null")){
+                            tempSSID=group.getNetworkName().split("-");
+                        }
+                        //WiFiApName = group.getNetworkName(); //20180520以前的
+                        WiFiApName = tempSSID[2];
                         Cluster_Name = WiFiApName;
                         GO_mac = group.getOwner().deviceAddress.toString();//這裡的GO_mac沒有用，抓到的是自己的mac address，因此加入了GO_SSID
-                        GO_SSID = group.getNetworkName();//用來於Step2判斷是否要連線的是自己的GO
+                        GO_SSID = tempSSID[2];
+                        //GO_SSID = group.getNetworkName();//用來於Step2判斷是否要連線的是自己的GO //20180520以前的
                         STATE = StateFlag.ADD_SERVICE.getIndex();//1
                         if(!group.getClientList().isEmpty()){
                             ROLE = RoleFlag.GO.getIndex();
@@ -3595,11 +3611,34 @@ public class Control extends Service {
                 public void onGroupInfoAvailable(WifiP2pGroup group) {
                     if (group != null) {
                         GOpasswd = group.getPassphrase();
-                        WiFiApName = group.getNetworkName();
-                        Cluster_Name = WiFiApName;
+                        /*20180520 新增 Start*/
+                        if(ROLE == RoleFlag.BRIDGE.getIndex()) {
+                            WiFiApName = thisDeviceName;
+                            //20180520為了解決BRIDGE會抓錯的問題，因此將SSID以及CN都改為單純開頭是Android_xxxx的
+                            if(group.getNetworkName()!=""||!group.getNetworkName().equals("null")){
+                                tempCN=group.getNetworkName().split("-");
+                            }
+                            Cluster_Name = tempCN[2];
+                            //Cluster_Name = group.getNetworkName();
+                        }
+                        else {
+                            //20180520為了解決BRIDGE會抓錯的問題，因此將SSID以及CN都改為單純開頭是Android_xxxx的
+                            if(group.getNetworkName()!=""||!group.getNetworkName().equals("null")){
+                                tempSSID=group.getNetworkName().split("-");
+                            }
+                            WiFiApName = tempSSID[2];
+                            Cluster_Name = WiFiApName;
+                            //WiFiApName = group.getNetworkName();
+                            //Cluster_Name = WiFiApName;
+                        }
+                        /*20180520 新增 End*/
+
+                        //WiFiApName = group.getNetworkName();//20180520以前
+                        //Cluster_Name = WiFiApName;//20180520以前
                         GO_mac = group.getOwner().deviceAddress.toString();//這裡的GO_mac沒有用，抓到的是自己的mac address，因此加入了GO_SSID
                         if(ROLE == RoleFlag.NONE.getIndex()) {//20180426只有NONE需要進來這裡更新GO_SSID，因為CLIENT在sendwifiipaddr已經進行更新了
-                            GO_SSID = group.getNetworkName();//用來於Step2判斷是否要連線的是自己的GO
+                            GO_SSID = tempSSID[2];
+                            //GO_SSID = group.getNetworkName();//用來於Step2判斷是否要連線的是自己的GO //20180520以前的
                             Log.d("Miga", "GO_SSID:" + GO_SSID);
                             s_status = "GO_SSID: " + GO_SSID;
                         }

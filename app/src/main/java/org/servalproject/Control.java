@@ -4121,44 +4121,50 @@ public class Control extends Service {
                         if(NeighborBatterHigher(tempNeighbor[j],first_round_Controller_record.get(i).getPOWER())){
                             //電量比自己高
                             tempNeighbor_canconnect = tempNeighbor_canconnect + tempNeighbor[j]+"@";//這裡就是儲存可以被連線的鄰居候選人
+                            //20180520 CandNeighbor_record於NeighborBatterHigher加入了
                         }
                     }
                 }
-                Collections.sort(CandNeighbor_record, new Comparator<CandidateController_set>() {
-                    public int compare(CandidateController_set o1, CandidateController_set o2) {
-                        return o1.compareTo(o2);
+                if(CandNeighbor_record.size()!=0) {//避免執行到電量都比鄰居高的device會跳出Exception (IndexOutOfBoundsException: Invalid index 0, size is 0)
+                    Collections.sort(CandNeighbor_record, new Comparator<CandidateController_set>() {
+                        public int compare(CandidateController_set o1, CandidateController_set o2) {
+                            return o1.compareTo(o2);
+                        }
+                    });
+
+                    ConnectNeighbor = CandNeighbor_record.get(0).getSSID();//取出排序後的第一個，表示他是被選為最高電量的neighbor
+
+                    //print出排序後的data, 檢查用
+                    for (int k = 0; k < CandNeighbor_record.size(); k++) {
+                        neighborprint = (CandidateController_set) CandNeighbor_record.get(k);
+                        Collect_contain = Collect_contain + obj_num + " : " + neighborprint.toString() + " ";
+                        obj_num++;
                     }
-                });
-
-                ConnectNeighbor = CandNeighbor_record.get(0).getSSID();//取出排序後的第一個，表示他是被選為最高電量的neighbor
-
-                //print出排序後的data, 檢查用
-                for (int k = 0; k < CandNeighbor_record.size(); k++) {
-                    neighborprint = (CandidateController_set) CandNeighbor_record.get(k);
-                    Collect_contain = Collect_contain + obj_num + " : " + neighborprint.toString() + " ";
-                    obj_num++;
+                    Log.d("Miga", "First_Round/"+ first_round_Controller_record.get(i).getSSID() + " , CandNeighbor_record: "+ Collect_contain);
+                    Collect_contain = "";
+                    obj_num = 0;//初始化，下面要用
                 }
-                Log.d("Miga", "First_Round/CandNeighbor_record" + Collect_contain);
-                Collect_contain="";obj_num=0;//初始化，下面要用
                 //Log.d("Miga",first_round_Controller_record.get(i).getSSID()+" tempNeighbor_canconnect: " +tempNeighbor_canconnect);
                 //檢查完鄰居CN以及電量後，去選擇可以連的鄰居
-                if(!tempNeighbor_canconnect.equals("")||tempNeighbor_canconnect!=""){//表示有鄰居候選人
+                if(!ConnectNeighbor.equals("")||ConnectNeighbor!=""){//表示有鄰居候選人
                     oldCN = first_round_Controller_record.get(i).getClusterName();//先把現在要連的這個人的舊有的ClusterName存起來
                     //取鄰居最高的那個
                     //ConnectNeighbor = tempNeighbor_canconnect.split("@");
                     //去連最高的
                     tmp = new ControllerData_set(first_round_Controller_record.get(i).getSSID(), first_round_Controller_record.get(i).getNeighbor(),
                             first_round_Controller_record.get(i).getNeighborNum(), first_round_Controller_record.get(i).getPOWER(),
-                            ConnectNeighbor, ConnectNeighbor, "None");
+                            GetNeighborCN(ConnectNeighbor), ConnectNeighbor, "None");
                     first_round_Controller_record.set(i, tmp);
                     //Log.d("Miga", "before edit: " + first_round_Controller_record.get(i).toString());
                     //更新鄰居的info
-                    update_Neighbor_data(ConnectNeighbor, "X", "X", "X", ConnectNeighbor, "X", "GO");
+                    update_Neighbor_data(ConnectNeighbor, "X", "X", "X", "X", "X", "GO");
                     UpdateSameCNNeighbor(oldCN,ConnectNeighbor);//把oldCluster相關的Device的clustername都更新為新的CN
 
                 }
             }
             tempNeighbor_canconnect="";
+            CandNeighbor_record.clear();//初始化，給下一個device用
+            ConnectNeighbor="";//初始化，給下一個device用
         }
         //print出排序後的data, 檢查用
         for (int i = 0; i < first_round_Controller_record.size(); i++) {
@@ -4260,7 +4266,15 @@ public class Control extends Service {
             }
         }
     }
-
+    //取得Neighbor的CN
+    public String GetNeighborCN(String NeighborSSID){
+        for( int i =0; i<first_round_Controller_record.size();i++){
+            if(NeighborSSID.equals(first_round_Controller_record.get(i).getSSID())){
+                return first_round_Controller_record.get(i).getClusterName();
+            }
+        }
+        return "DontKonw";//沒找到Neighbor
+    }
 
     public class Send_info extends Thread {
         private DatagramPacket dp;
@@ -4279,7 +4293,7 @@ public class Control extends Service {
                     //Log.d("Miga","Send_info ControllerAuto");
                     if (IsP2Pconnect) {
                         //Log.d("Miga","Send_info IsP2Pconnect");
-                        int randomnum = randomWithRange(2,4)*1000;
+                        int randomnum = randomWithRange(2,3)*1000;
                         Thread.sleep(randomnum);
                         //Log.d("Miga","Sleep:"+randomnum);
                         if( ControllerAuto && IsNeighborCollect ){ //要執行controller且已經蒐集完鄰居的資料了
@@ -4416,7 +4430,8 @@ public class Control extends Service {
                                     obj_num++;
                                 }
                                 Log.d("Miga", "Receive_info/Controller_record: " + Collect_contain);
-                                Thread.sleep(4000);
+                                int randomnum = randomWithRange(2,3)*1000;
+                                Thread.sleep(randomnum);
                             }else{//不是Controller的要幫忙Relay packet
                                 try {
                                     message = RecvMsg_cinfo;

@@ -296,6 +296,8 @@ public class Control extends Service {
     private DatagramPacket receivedpkt_cinfo_nwconnect;
     private DatagramSocket receivedskt_cinfo_nwconnect;//unicast
     private String RecvMsg_cinfo_nwconnect="";
+    private String MyNewConnectInfo="";//用來儲存從controller那裡接收到的新的連線資訊
+    private boolean p2p_connect_check = false;
 
     //For Controller Start
     private List<CandidateController_set> CandController_record;
@@ -4020,6 +4022,11 @@ public class Control extends Service {
             try {
                 while(true) {
                     if (ControllerAuto) {
+                        if(IsReceiveMyself){//當收到自己新的的info，暫時先讓這個thread不要往下執行20180521
+                            while(true){
+                                ;
+                            }
+                        }
                         Log.d("Miga","Conroller_Thread open");
                         if (t_Receive_info == null) {
                             t_Receive_info = new Receive_info();
@@ -4078,7 +4085,7 @@ public class Control extends Service {
                                 Collect_contain = Collect_contain + obj_num + " : " + tmp_con.toString() + " ";
                                 obj_num++;
                             }
-                            Log.d("Miga", "Conroller_Thread/first_round_Controller_record" + Collect_contain);
+                            Log.d("Miga", "Conroller_Thread/first_round_Controller_record" + Collect_contain.trim());
                             Collect_contain="";obj_num=0;
 
                             //開始處理每個Device配對問題
@@ -4312,6 +4319,11 @@ public class Control extends Service {
                 while(ControllerAuto) {
                     //Log.d("Miga","Send_info ControllerAuto");
                     if (IsP2Pconnect) {
+                        if(IsReceiveMyself){//當收到自己新的的info，暫時先讓這個thread不要往下執行20180521
+                            while(true){
+                                ;
+                            }
+                        }
                         //Log.d("Miga","Send_info IsP2Pconnect");
                         int randomnum = randomWithRange(2,3)*1000;
                         Thread.sleep(randomnum);
@@ -4454,6 +4466,11 @@ public class Control extends Service {
                                 Thread.sleep(randomnum);
                             }else{//不是Controller的要幫忙Relay packet
                                 try {
+                                    if(IsReceiveMyself){//當收到自己新的的info，暫時先讓這個thread不要往下執行20180521
+                                        while(true){
+                                            ;
+                                        }
+                                    }
                                     message = RecvMsg_cinfo;
                                     senddsk = null;
                                     senddsk = new DatagramSocket();
@@ -4710,6 +4727,7 @@ public class Control extends Service {
         private String message, tempkey;
         MulticastSocket multicsk;//Miga20180313
         DatagramPacket msgPkt;//Miga
+        int send_time=0;
 
         public void run(){
             try{
@@ -4717,6 +4735,11 @@ public class Control extends Service {
                 senddsk = new DatagramSocket();
                 //Log.d("Miga","Send_info onpe");
                 while(ControllerAuto) {
+                    if(IsReceiveMyself){//當收到自己新的的info，暫時先讓這個thread不要往下執行20180521
+                        while(true){
+                            ;
+                        }
+                    }
                     //Log.d("Miga","Send_info ControllerAuto");
                     if (IsSecondRoundOver) {
                         //Log.d("Miga","Send_info IsP2Pconnect");
@@ -4755,8 +4778,15 @@ public class Control extends Service {
                                         //s_status = "multicsk send message" + message;
                                     }
                                 }
+                            }else{
+                                MyNewConnectInfo = Final_Controller_record.get(i).toString_Final();//Controller取得自己的
+                                if(send_time == 3) {
+                                    IsReceiveMyself = true;//Controllert傳送3次後，就不在傳送了
+                                    New_Connection_Func();//Controller也開啟新的連線
+                                }
                             }
                         }//End for Final_Controller_record.size()
+                        send_time += 1 ;
                     }//End IsSecondRoundOver
                     //Thread.sleep(1000);
                     senddsk.close();// 20180520 關socket
@@ -4818,15 +4848,26 @@ public class Control extends Service {
                         //RecvMsg_cinfo_nwconnect
                         //Log.d("Miga","Receive_info_new_connect: "+RecvMsg_cinfo_nwconnect);
                         try {
+                            if(IsReceiveMyself){//當收到自己新的的info，暫時先讓這個thread不要往下執行20180521
+                                while(true){
+                                    ;
+                                }
+                            }
                             // relay packet
                             //message = temp[0] + "#" + temp[1] + "#" + temp[2].trim() + "#" + temp[3];
                             message = RecvMsg_cinfo_nwconnect;
                             temp = message.split("#");
                             if (WiFiApName.equals(temp[0])) {
-                                IsReceiveMyself = true;
-                                //收到的是自己的，因此不轉傳
                                 Log.d("Miga","Receive_info_new_connect: I receive myself info!!!!!");
                                 s_status = "Receive_info_new_connect: I receive myself info!!!!!";
+                                IsReceiveMyself = true;
+                                if(!IsReceiveFromCon){
+                                    IsReceiveFromCon = true;//已經從controller那裡收到資訊
+                                    MyNewConnectInfo = RecvMsg_cinfo_nwconnect;//儲存自己的新的連線info
+                                }
+                                New_Connection_Func();
+                                //收到的是自己的，因此不轉傳
+
                             }else
                             {   //不是自己的連線msg，因此轉傳
                                 senddsk = null;
@@ -4974,5 +5015,250 @@ public class Control extends Service {
             return "dontkown";
 
 
+    }
+
+    public void New_Connection_Func(){
+        String [] temp;
+        try {
+            if (IsReceiveMyself) {
+                Thread.sleep(20000);
+                Log.d("Miga","Start New_connection_func!");
+                //開始進行舊有的連線斷線
+                if (mConnectivityManager != null) {
+                    mNetworkInfo = mConnectivityManager.getNetworkInfo(ConnectivityManager.TYPE_WIFI);
+                    if (mNetworkInfo.isConnected() == true && mNetworkInfo != null) {//wifi interface已連上
+                        wifi.disconnect();//斷掉Wifi連線
+                        Log.d("Miga","wifi.disconnect()");
+
+                        Thread.sleep(500);
+                    }
+                }
+                //移除所有之前wifi連線網路的設定
+                List<WifiConfiguration> list = wifi.getConfiguredNetworks();
+                for (WifiConfiguration i : list) {
+                    wifi.removeNetwork(i.networkId);//移除所有之前wifi連線網路的設定
+                    if(!wifi.removeNetwork(i.networkId))
+                        wifi.disableNetwork(i.networkId);//Android 6.0無法清除連線，只好先disable
+                    wifi.saveConfiguration();//除存設定
+                }
+                Thread.sleep(1000);
+
+                Log.d("Miga","My connection info:"+MyNewConnectInfo);
+
+                //處理新的連線資訊
+                temp = MyNewConnectInfo.split("#");//[0] SSID,[1] Neighbor,[2] NeighborNum,[3] POWER,[4] ClusterName,[5] WiFiInterface,[6] P2PInterface
+                if((!temp[6].equals("GO"))&&(!temp[6].equals("None"))){//不為GO也不為NONE表示要連到別人那裡
+                    //GO移除group
+                    GOdisconnect();
+                }
+                if(temp[6].equals("GO")){//檢查是否要建立GO
+                    CreateP2PGroup();//建立P2P group
+                }
+                else if(!temp[6].equals("None")){
+                    Connect_P2P(temp[5],temp[4]);
+                }
+                if(!temp[5].equals("None")){//Wifi interface不為None，表示有藥連到其他裝置
+                    Connect_WiFi(temp[5],temp[4]);
+                }
+
+            }
+        }catch (Exception e){
+
+        }
+    }
+    /*public class New_Connection extends Thread{
+        public void run(){
+
+        }
+    }*/
+
+    //GO移除group
+    public void GOdisconnect() {
+        if (manager != null && channel != null) {
+            manager.requestGroupInfo(channel, new WifiP2pManager.GroupInfoListener() {
+                @Override
+                public void onGroupInfoAvailable(WifiP2pGroup group) {
+                    if (group != null && manager != null && channel != null) {//&& group.isGroupOwner()
+                        manager.removeGroup(channel, new ActionListener() {
+
+                            @Override
+                            public void onSuccess() {
+                                Log.d("Miga", "removeGroup onSuccess -");
+                            }
+
+                            @Override
+                            public void onFailure(int reason) {
+                                Log.d("Miga", "removeGroup onFailure -" + reason);
+                            }
+                        });
+                    }
+                }
+            });
+        }
+    }
+
+    public void CreateP2PGroup(){
+        manager.createGroup(channel, new WifiP2pManager.ActionListener() {
+            @Override
+            public void onSuccess() {
+                //STATE = StateFlag.ADD_SERVICE.getIndex();
+                Log.d("Miga", "CreateGroup Success!");
+                //Isconnect = true;
+                //s_status = "createGroup time : " + Double.toString(((Calendar.getInstance().getTimeInMillis() - start_time) / 1000.0))  +" stay_time : " +  Double.toString((sleep_time/1000.0))
+                //        +  " Round_Num :" + NumRound;
+            }
+
+            @Override
+            public void onFailure(int error) {
+                Log.d("Miga", "CreateGroup Failure!");
+            }
+        });
+    }
+
+    public void Connect_WiFi(String ConnectSSID,String NewCN){
+        boolean connectSuccess= false;
+        try {
+            while(!connectSuccess){
+                String key = getDevicePwd(ConnectSSID);//取得密碼
+                WifiConfiguration wc = new WifiConfiguration();
+                s_status = "State: choosing peer done, try to associate with" + ": SSID name: " + ConnectSSID + " , passwd: " + key;
+                Log.d("Miga", "State: choosing peer done, try to associate with" + ": SSID name: " + ConnectSSID + " , passwd: " + key);
+                wc.SSID = "\"" + getWholeSSID(ConnectSSID) + "\"";
+                wc.preSharedKey = "\"" + key + "\"";
+                wc.hiddenSSID = true;
+                wc.status = WifiConfiguration.Status.ENABLED;
+                wc.allowedGroupCiphers.set(WifiConfiguration.GroupCipher.TKIP);
+                wc.allowedGroupCiphers.set(WifiConfiguration.GroupCipher.CCMP);
+                wc.allowedKeyManagement.set(WifiConfiguration.KeyMgmt.WPA_PSK);
+                wc.allowedPairwiseCiphers.set(WifiConfiguration.PairwiseCipher.TKIP);
+                wc.allowedPairwiseCiphers.set(WifiConfiguration.PairwiseCipher.CCMP);
+                wc.allowedProtocols.set(WifiConfiguration.Protocol.RSN);
+                TryNum = 15;
+
+                //使用wifi interface連線,連上GO
+                int res = wifi.addNetwork(wc);
+                isWifiConnect = wifi.enableNetwork(res, true);//學長的temp
+                while (!mNetworkInfo.isConnected() && TryNum > 0) {//wifi interface沒成功連上,開始不斷嘗試連接
+                    isWifiConnect = wifi.enableNetwork(res, true);
+                    Thread.sleep(1000);
+                    sleep_time = sleep_time + 1000;
+                    TryNum--;
+
+                    s_status = "State: associating GO, enable true:?" + isWifiConnect + " remainder #attempt:"
+                            + TryNum;
+                    Log.d("Miga", "State: associating GO, enable true:?" + isWifiConnect
+                            + " remainder #attempt:" + TryNum);
+                    mNetworkInfo = mConnectivityManager.getNetworkInfo(ConnectivityManager.TYPE_WIFI);
+                }//End While
+
+                //成功連上GO
+                if (mNetworkInfo.isConnected()) {
+                    // renew service record information
+                    Cluster_Name = NewCN;//將自己的Cluster_Name更新為Controller分配好的CN
+                    //ROLE = RoleFlag.CLIENT.getIndex();//變為CLIENT
+                    WiFiIpAddr = wifiIpAddress();//取得wifi IP address
+                    Log.d("Miga", "Connect_WiFi/ROLE:" + ROLE + "Cluster_Name:" + Cluster_Name + " wifiIpAddress:" + WiFiIpAddr);
+
+                    Thread.sleep(1000);
+                    connectSuccess = true;//成功連線，跳出此迴圈
+
+                    //CheckChangeIP(WiFiIpAddr);// Miga Add 20180307. 讓client丟自己的wifi ip addr.給GO檢查,並讓GO的IPTable內有這組ip(為了讓GO進行unicast傳送訊息用)
+                    //STATE = StateFlag.ADD_SERVICE.getIndex();
+                    //GO_mac = MAC;
+                    //isCheck = true;//檢查完畢
+                } else {
+                    connectSuccess = false;
+                }
+            }
+        }catch (Exception e){
+            Log.d("Miga","Exception: "+e.toString());
+
+        }
+    }
+
+    public void Connect_P2P (String ConnectSSID,String NewCN){
+
+        while(!p2p_connect_check) {
+            WifiP2pConfig config = new WifiP2pConfig();
+            config.deviceAddress = getDeviceMACAddress(ConnectSSID);
+            config.wps.setup = WpsInfo.PBC;
+            config.groupOwnerIntent = 0;
+
+            int try_num = 0;
+
+            s_status = "State: Relay associating GO, enable true:?" + ConnectSSID + " remainder #attempt:"
+                    + try_num + " Cluster_Name " + NewCN;
+            Log.d("Miga", "State: Relay associating GO, enable true:?" + ConnectSSID + " remainder #attempt:"
+                    + try_num + " Cluster_Name " + NewCN);
+
+            manager.connect(channel, config, new ActionListener() {
+                @Override
+                public void onSuccess() {
+                    try {
+                        p2p_connect_check = true;
+                        Thread.sleep(5000);
+                        sleep_time = sleep_time + 5;
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
+
+                    Log.d("Miga", "P2P connect Success ");
+                }
+                @Override
+                public void onFailure(int reason) {
+                    manager.cancelConnect(channel, new ActionListener() {
+                        @Override
+                        public void onSuccess() {
+                        }
+
+                        public void onFailure(int reason) {
+                        }
+                    });
+                    Log.d("Miga", "P2P connect failure");
+                }
+            });
+        }
+    }
+
+    //取得該裝置的MAC，用來讓其他裝置連線用。
+    public String getDeviceMACAddress(String SSID){
+        if(SSID.equals("Android_4a9e"))
+            return "62:45:cb:1b:e8:77";
+        else if(SSID.equals("Android_e9dd"))
+            return "62:45:cb:21:78:cf";
+        else if(SSID.equals("Android_9722"))
+            return "2e:4d:54:30:3f:b7";
+        else
+            return "dontkown";
+
+
+    }
+
+    public String getNewRole(String WifiIn,String P2PIn){
+        if(WifiIn.equals("None")&&P2PIn.equals("GO")){
+            return "GO";
+        }else if((!WifiIn.equals("None"))&&P2PIn.equals("GO")){
+            //Wifi 有連別人，p2p卻是GO
+            return "HYBRID";
+        }else if((!WifiIn.equals("None"))&&P2PIn.equals("None")){
+            //Wifi 有連別人
+            return "CLIENT";
+        }else if((!WifiIn.equals("None"))&&(!P2PIn.equals("None"))&&(!P2PIn.equals("GO"))){
+            //Wifi 有連別人，p2p有連別人且不是GO
+            return "BRIDGE";
+        }else{
+            return "NONE";
+        }
+    }
+    //Wifi連線時需要完整的網路名稱
+    public String getWholeSSID(String SSID){
+        if(SSID.equals("Android_4a9e"))
+            return "DIRECT-ND-Android_4a9e";
+        else if(SSID.equals("Android_e9dd"))
+            return "DIRECT-LK-Android_e9dd";
+        else if(SSID.equals("Android_9722"))
+            return "DIRECT-Wd-Android_9722";
+        else
+            return "dontkown";
     }
 }

@@ -5181,7 +5181,24 @@ public class Control extends Service {
 
                 //使用wifi interface連線,連上GO
                 int res = wifi.addNetwork(wc);
-                isWifiConnect = wifi.enableNetwork(res, true);//學長的temp
+                //Log.d("Miga","res:!!!!!!!!!!!!"+res);
+                //s_status = "res:"+res;
+                if(res == -1){//解決disable後不能重新連線的問題
+                    List<WifiConfiguration> list = wifi.getConfiguredNetworks();
+                    for (WifiConfiguration i : list){
+                        //Log.d("Miga","i:"+i);
+                        if( i.SSID.equals(wc.SSID) ){
+                            //Log.d("Miga","I enter if");
+                            //s_status="I enter if";
+                            isWifiConnect = wifi.enableNetwork(i.networkId,  true);
+                            //Log.d("Miga","isWifiConnect:"+isWifiConnect);
+                            //s_status="isWifiConnect:"+isWifiConnect;
+                        }
+                    }
+                }else{
+                isWifiConnect = wifi.enableNetwork(res, true);
+                }
+                //isWifiConnect = wifi.enableNetwork(res, true);//學長的temp
                 while (!mNetworkInfo.isConnected() && TryNum > 0) {//wifi interface沒成功連上,開始不斷嘗試連接
                     isWifiConnect = wifi.enableNetwork(res, true);
                     Thread.sleep(1000);

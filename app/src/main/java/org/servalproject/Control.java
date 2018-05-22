@@ -300,7 +300,9 @@ public class Control extends Service {
     private boolean p2p_connect_check = false;
     private boolean IsNewConnection = false;//用來判斷是否已開始進行NewConnection
     private boolean IsControllerOpenFirstRond = false;//用來讓這個thread在Controller開啟第一輪後先停止，等到下一次要進行controller時在開啟
-
+    private boolean IsNewConnectionComplete = false;//判斷新的連線是否已完成
+    private int RunNewConnectionTime = 0;//用來儲存執行次數
+    private Thread t_New_Connection_Func = null;
 
     //For Controller Start
     private List<CandidateController_set> CandController_record;
@@ -4025,9 +4027,18 @@ public class Control extends Service {
             try {
                 while(true) {
                     if (ControllerAuto) {
-                        if(IsControllerOpenFirstRond){//當收到自己新的的info，暫時先讓這個thread不要往下執行20180521
+                        /*while(IsControllerOpenFirstRond){//當收到自己新的的info，暫時先讓這個thread不要往下執行20180521
                             Thread.sleep(60000);//sleep 1 mins
-                            while(true){
+                            if(IsNewConnectionComplete){//新的連線已完成，重新繼續執行此thread
+                                IsControllerOpenFirstRond = false;
+                                IsNewConnectionComplete = false;
+                                SSID ="";Collect_contain="";obj_num=0;//初始化，下面要用
+
+                            }
+                        }*/
+                        if(IsControllerOpenFirstRond){
+                            Thread.sleep(60000);
+                            while (true){
                                 ;
                             }
                         }
@@ -4116,7 +4127,7 @@ public class Control extends Service {
     public void First_Round (){
         ControllerData_set tmp,tempprint;
         CandidateController_set neighborprint;
-        String[] tempNeighbor;//,ConnectNeighbor;
+        String[] tempNeighbor = null;//,ConnectNeighbor;
         int obj_num = 0;
         String Collect_contain = "",tempNeighbor_canconnect="",oldCN="",ConnectNeighbor="";
 
@@ -4797,10 +4808,15 @@ public class Control extends Service {
                             }else{
                                 MyNewConnectInfo = Final_Controller_record.get(i).toString_Final();//Controller取得自己的
                                 if(send_time == 3) {
-                                    IsReceiveMyself = true;//Controllert傳送3次後，就不在傳送了
-                                    New_Connection_Func();//Controller也開啟新的連線
+                                    IsReceiveMyself = true;//Controllert傳送5次後，就不在傳送了
+                                    //New_Connection_Func();//Controller也開啟新的連線
+                                    if(t_New_Connection_Func==null){
+                                        t_New_Connection_Func = new New_Connection_Func_t();
+                                        t_New_Connection_Func.start();
+                                    }
                                 }
                             }
+                            Thread.sleep(1000);
                         }//End for Final_Controller_record.size()
                         send_time += 1 ;
                     }//End IsSecondRoundOver
@@ -4877,13 +4893,17 @@ public class Control extends Service {
                             message = RecvMsg_cinfo_nwconnect;
                             temp = message.split("#");
                             if (WiFiApName.equals(temp[0])) {
-                                Log.d("Miga","Receive_info_new_connect: I receive myself info!!!!!");
-                                s_status = "Receive_info_new_connect: I receive myself info!!!!!";
+                                MyNewConnectInfo = message;//儲存自己的新的連線info
                                 IsReceiveMyself = true;
                                 if(!IsReceiveFromCon){
+                                    Log.d("Miga","Receive_info_new_connect: I receive myself info!!!!!");
+                                    s_status = "Receive_info_new_connect: I receive myself info!!!!!";
                                     IsReceiveFromCon = true;//已經從controller那裡收到資訊
-                                    MyNewConnectInfo = RecvMsg_cinfo_nwconnect;//儲存自己的新的連線info
-                                    New_Connection_Func();
+                                    //New_Connection_Func();
+                                    if(t_New_Connection_Func==null){//要把新連線改成thread，否則只要進去func等於就沒辦法幫忙轉傳了
+                                        t_New_Connection_Func = new New_Connection_Func_t();
+                                        t_New_Connection_Func.start();
+                                    }
                                 }
                                 //收到的是自己的，因此不轉傳
 
@@ -5043,62 +5063,59 @@ public class Control extends Service {
 
     }
 
-    public void New_Connection_Func(){
-        String [] temp;
-        try {
-            if (IsReceiveMyself) {
-                Thread.sleep(20000);
-                Log.d("Miga","Start New_connection_func!");
-                IsNewConnection = true;//已開始進行新連線
-                //開始進行舊有的連線斷線
-                if (mConnectivityManager != null) {
-                    mNetworkInfo = mConnectivityManager.getNetworkInfo(ConnectivityManager.TYPE_WIFI);
-                    if (mNetworkInfo.isConnected() == true && mNetworkInfo != null) {//wifi interface已連上
-                        wifi.disconnect();//斷掉Wifi連線
-                        Log.d("Miga","wifi.disconnect()");
+    public class New_Connection_Func_t extends Thread{
+        public void run(){
+            String [] temp;
+            try {
+                if (IsReceiveMyself) {
+                    Thread.sleep(20000);
+                    Log.d("Miga","Start New_connection_func!");
+                    IsNewConnection = true;//已開始進行新連線
+                    //開始進行舊有的連線斷線
+                    if (mConnectivityManager != null) {
+                        mNetworkInfo = mConnectivityManager.getNetworkInfo(ConnectivityManager.TYPE_WIFI);
+                        if (mNetworkInfo.isConnected() == true && mNetworkInfo != null) {//wifi interface已連上
+                            wifi.disconnect();//斷掉Wifi連線
+                            Log.d("Miga","wifi.disconnect()");
 
-                        Thread.sleep(500);
+                            Thread.sleep(500);
+                        }
                     }
-                }
-                //移除所有之前wifi連線網路的設定
-                List<WifiConfiguration> list = wifi.getConfiguredNetworks();
-                for (WifiConfiguration i : list) {
-                    wifi.removeNetwork(i.networkId);//移除所有之前wifi連線網路的設定
-                    if(!wifi.removeNetwork(i.networkId))
-                        wifi.disableNetwork(i.networkId);//Android 6.0無法清除連線，只好先disable
-                    wifi.saveConfiguration();//除存設定
-                }
-                Thread.sleep(1000);
+                    //移除所有之前wifi連線網路的設定
+                    List<WifiConfiguration> list = wifi.getConfiguredNetworks();
+                    for (WifiConfiguration i : list) {
+                        wifi.removeNetwork(i.networkId);//移除所有之前wifi連線網路的設定
+                        if(!wifi.removeNetwork(i.networkId))
+                            wifi.disableNetwork(i.networkId);//Android 6.0無法清除連線，只好先disable
+                        wifi.saveConfiguration();//除存設定
+                    }
+                    Thread.sleep(1000);
 
-                Log.d("Miga","My connection info:"+MyNewConnectInfo);
+                    Log.d("Miga","My connection info:"+MyNewConnectInfo);
 
-                //處理新的連線資訊
-                temp = MyNewConnectInfo.split("#");//[0] SSID,[1] Neighbor,[2] NeighborNum,[3] POWER,[4] ClusterName,[5] WiFiInterface,[6] P2PInterface
-                if((!temp[6].equals("GO"))&&(!temp[6].equals("None"))){//不為GO也不為NONE表示要連到別人那裡
-                    //GO移除group
-                    GOdisconnect();
+                    //處理新的連線資訊
+                    temp = MyNewConnectInfo.split("#");//[0] SSID,[1] Neighbor,[2] NeighborNum,[3] POWER,[4] ClusterName,[5] WiFiInterface,[6] P2PInterface
+                    if((!temp[6].equals("GO"))&&(!temp[6].equals("None"))){//不為GO也不為NONE表示要連到別人那裡
+                        //GO移除group
+                        GOdisconnect();
+                    }
+                    if(temp[6].equals("GO")){//檢查是否要建立GO
+                        CreateP2PGroup();//建立P2P group
+                    }
+                    else if(!temp[6].equals("None")){
+                        Connect_P2P(temp[5],temp[4]);
+                    }
+                    if(!temp[5].equals("None")){//Wifi interface不為None，表示有藥連到其他裝置
+                        Connect_WiFi(temp[5],temp[4]);
+                    }
+                    //Thread.sleep(30000);//等30秒
+                    //VariableInitial();//初始化
                 }
-                if(temp[6].equals("GO")){//檢查是否要建立GO
-                    CreateP2PGroup();//建立P2P group
-                }
-                else if(!temp[6].equals("None")){
-                    Connect_P2P(temp[5],temp[4]);
-                }
-                if(!temp[5].equals("None")){//Wifi interface不為None，表示有藥連到其他裝置
-                    Connect_WiFi(temp[5],temp[4]);
-                }
+            }catch (Exception e){
 
             }
-        }catch (Exception e){
-
         }
     }
-    /*public class New_Connection extends Thread{
-        public void run(){
-
-        }
-    }*/
-
     //GO移除group
     public void GOdisconnect() {
         if (manager != null && channel != null) {
@@ -5287,5 +5304,22 @@ public class Control extends Service {
             return "DIRECT-Wd-Android_9722";
         else
             return "dontkown";
+    }
+
+    //建立完新連線之後，先前所用到的參數都要初始化。
+    public void VariableInitial(){
+        IsNewConnectionComplete = true;//新的連線已完成
+        IsControllerOpenFirstRond = false;
+        IsReceiveMyself = false;
+        IsNewConnection = false;
+        CandController_record.clear();//候選人清除
+        Controller_record.clear();//Controller資料清除
+        first_round_Controller_record.clear();
+        second_round_Controller_record.clear();
+        Final_Controller_record.clear();
+        TotaldevicesNum = 0;//總共餐與實驗裝置數量歸零
+        IsNeighborCollect = false;//
+        IsSecondRoundOver = false;
+        IsReceiveFromCon = false;
     }
 }

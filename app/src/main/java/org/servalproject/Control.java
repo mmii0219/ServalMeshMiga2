@@ -4554,13 +4554,13 @@ public class Control extends Service {
                                     iterator = IPTable.keySet().iterator();
                                     while (iterator.hasNext()) {
                                         tempkey = iterator.next().toString();
-                                        if (!recv_ip.equals(tempkey)) {
+                                        //if (!recv_ip.equals(tempkey)) {
                                             senddp = new DatagramPacket(message.getBytes(), message.length(),
                                                     InetAddress.getByName(tempkey), IP_port_controller_collect);
                                             senddsk.send(senddp);
                                             //Log.d("Miga", "(Relay)Send the message: " + message + " to " + tempkey);
                                             //s_status = "State : (Relay)Send the message: " + message + " to " + tempkey;
-                                        }
+                                        //}
                                     }
                                     if(ROLE == RoleFlag.BRIDGE.getIndex()) {
                                         //for BRIDGE

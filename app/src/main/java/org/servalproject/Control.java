@@ -4492,6 +4492,25 @@ public class Control extends Service {
                                     return;//不是Controller，當收到自己新的的info,因此結束這個thread
                             }
                         }
+                        try {//新的topology改變後，GO需要蒐集Client的IP，才能去做轉傳pkt
+                            if (receivedpkt_cinfo != null) {
+                                InetAddress WiFiIPAddress = receivedpkt_cinfo.getAddress();
+                                //if(RunNewConnectionTime>0)
+                                //    Log.d("Miga","receivedpkt_cinfo:"+receivedpkt_cinfo+", WiFiIPAddress:"+WiFiIPAddress);
+                                if(WiFiIPAddress!= null) {
+                                    String clientip = WiFiIPAddress.toString().split("/")[1];//接收CLIENT的IP
+                                    if (!clientip.equals("192.168.49.1")) {//不是GO(GO的不存在CLINET內)
+                                        if (!IPTable.containsKey(clientip)) {//避免client在sendWiFiIPAddress沒有成功傳來，因此直接在這邊做IPTable的儲存->SendWiFiIPAddress和Collect_IPServer之後可以拿掉了
+                                            IPTable.put(clientip, 0);
+                                            Log.d("Miga", "Receive_info/IPTable:" + IPTable);
+                                            s_status = "Receive_info/IPTable:" + IPTable;
+                                        }
+                                    }
+                                }
+                            }
+                        }catch (Exception e){
+                            Log.d("Miga","Receive_info/receivedpkt_cinfo.getAddress() Exception: " +e.toString());
+                        }
                         //Log.d("Miga","RECE:"+RecvMsg_cinfo);
                         temp = RecvMsg_cinfo.split("#");//將message之中有#則分開存到tmep陣列裡;message = WiFiApName + "#" + Cluster_Name + "#" + "5"+"#"+POWER+ "#" +ROLE;
                         if( ControllerAuto && IsNeighborCollect ){ //要執行controller且已經蒐集完鄰居的資料了
@@ -5529,6 +5548,8 @@ public class Control extends Service {
         InfoChangeTime = 0;//歸零service discovery交換次數
         NeighborList="";
         Neighbor_record.clear();
-
+        IPTable.clear();//IPTable清除
+        //Log.d("Miga", "VariableInitial/IPTable:" + IPTable);
+        s_status = "VariableInitial/IPTable:" + IPTable;
     }
 }

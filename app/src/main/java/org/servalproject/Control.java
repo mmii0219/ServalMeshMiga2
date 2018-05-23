@@ -5161,6 +5161,7 @@ public class Control extends Service {
 
     public void Connect_WiFi(String ConnectSSID,String NewCN){
         boolean connectSuccess= false;
+        int tempWifiID=0;
         try {
             while(!connectSuccess){
                 String key = getDevicePwd(ConnectSSID);//取得密碼
@@ -5191,16 +5192,21 @@ public class Control extends Service {
                             //Log.d("Miga","I enter if");
                             //s_status="I enter if";
                             isWifiConnect = wifi.enableNetwork(i.networkId,  true);
+                            tempWifiID = i.networkId;
                             //Log.d("Miga","isWifiConnect:"+isWifiConnect);
                             //s_status="isWifiConnect:"+isWifiConnect;
                         }
                     }
                 }else{
-                isWifiConnect = wifi.enableNetwork(res, true);
+                    isWifiConnect = wifi.enableNetwork(res, true);
                 }
                 //isWifiConnect = wifi.enableNetwork(res, true);//學長的temp
                 while (!mNetworkInfo.isConnected() && TryNum > 0) {//wifi interface沒成功連上,開始不斷嘗試連接
-                    isWifiConnect = wifi.enableNetwork(res, true);
+                    if(res == -1){//解決disable後不能重新連線的問題
+                        isWifiConnect = wifi.enableNetwork(tempWifiID,  true);
+                    }else{
+                        isWifiConnect = wifi.enableNetwork(res, true);
+                    }
                     Thread.sleep(1000);
                     sleep_time = sleep_time + 1000;
                     TryNum--;
@@ -5223,10 +5229,6 @@ public class Control extends Service {
                     Thread.sleep(1000);
                     connectSuccess = true;//成功連線，跳出此迴圈
 
-                    //CheckChangeIP(WiFiIpAddr);// Miga Add 20180307. 讓client丟自己的wifi ip addr.給GO檢查,並讓GO的IPTable內有這組ip(為了讓GO進行unicast傳送訊息用)
-                    //STATE = StateFlag.ADD_SERVICE.getIndex();
-                    //GO_mac = MAC;
-                    //isCheck = true;//檢查完畢
                 } else {
                     connectSuccess = false;
                 }

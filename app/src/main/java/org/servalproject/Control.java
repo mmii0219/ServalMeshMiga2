@@ -5251,25 +5251,40 @@ public class Control extends Service {
 
                     //處理新的連線資訊
                     temp = MyNewConnectInfo.split("#");//[0] SSID,[1] Neighbor,[2] NeighborNum,[3] POWER,[4] ClusterName,[5] WiFiInterface,[6] P2PInterface
+                    //進行更新新的ROLE
+                    ROLE = RoleFlag.NONE.getIndex();//先None，為了下面方便判斷用
                     if((!temp[6].equals("GO"))&&(!temp[6].equals("None"))){//不為GO也不為NONE表示要連到別人那裡
                         //GO移除group
                         GOdisconnect();
+                        ROLE = RoleFlag.BRIDGE.getIndex();
                     }
                     if(temp[6].equals("GO")){//檢查是否要建立GO
                         CreateP2PGroup();//建立P2P group
+                        ROLE = RoleFlag.GO.getIndex();
                     }
                     else if(!temp[6].equals("None")){
                         Connect_P2P(temp[5],temp[4]);
                     }
                     if(!temp[5].equals("None")){//Wifi interface不為None，表示有藥連到其他裝置
                         Connect_WiFi(temp[5],temp[4]);
+                        if( ROLE == RoleFlag.NONE.getIndex() )
+                            ROLE = RoleFlag.CLIENT.getIndex();
+                        else if( ROLE == RoleFlag.GO.getIndex())
+                            ROLE = RoleFlag.HYBRID.getIndex();
+
                     }
-                    Thread.sleep(30000);//等30秒
+                    Thread.sleep(30000);//等30秒(這裡要等的原因是要讓那些可能正在進行wifi連線或是p2p連線的裝置有緩衝時間)
                     VariableInitial();//初始化
                 }
             }catch (Exception e){
 
+            }finally {
+                if(t_New_Connection_Func!=null){
+                    t_New_Connection_Func = null;
+                    Log.d("Miga","New_Connection_Func_t = null");
+                }
             }
+
         }
     }
     //GO移除group

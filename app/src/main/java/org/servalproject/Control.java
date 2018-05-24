@@ -4498,6 +4498,7 @@ public class Control extends Service {
         public void run() {
 
             try{
+                recv_ip="";
                 //20180326將multicast和unicast的socket分成兩個thread來寫，小的thread所接收的data會用global來儲存，再由此thread來處理資料。
                 lMsg_cinfo = new byte[8192];
                 receivedpkt_cinfo = new DatagramPacket(lMsg_cinfo, lMsg_cinfo.length);//接收到的message會存在IMsg
@@ -4541,6 +4542,7 @@ public class Control extends Service {
                                 //    Log.d("Miga","receivedpkt_cinfo:"+receivedpkt_cinfo+", WiFiIPAddress:"+WiFiIPAddress);
                                 if(WiFiIPAddress!= null) {
                                     String clientip = WiFiIPAddress.toString().split("/")[1];//接收CLIENT的IP
+                                    recv_ip =clientip;
                                     if (!clientip.equals("192.168.49.1")) {//不是GO(GO的不存在CLINET內)
                                         if (!IPTable.containsKey(clientip)) {//避免client在sendWiFiIPAddress沒有成功傳來，因此直接在這邊做IPTable的儲存->SendWiFiIPAddress和Collect_IPServer之後可以拿掉了
                                             IPTable.put(clientip, 0);
@@ -4613,13 +4615,13 @@ public class Control extends Service {
                                             iterator = IPTable.keySet().iterator();
                                             while (iterator.hasNext()) {
                                                 tempkey = iterator.next().toString();
-                                                //if (!recv_ip.equals(tempkey)) {
-                                                senddp = new DatagramPacket(message.getBytes(), message.length(),
+                                                if ((!"".equals(recv_ip))&!recv_ip.equals(tempkey)) {
+                                                    senddp = new DatagramPacket(message.getBytes(), message.length(),
                                                         InetAddress.getByName(tempkey), IP_port_controller_collect);
-                                                senddsk.send(senddp);
+                                                    senddsk.send(senddp);
                                                 //Log.d("Miga", "(Relay)Send the message: " + message + " to " + tempkey);
                                                 //s_status = "State : (Relay)Send the message: " + message + " to " + tempkey;
-                                                //}
+                                                }
                                             }
                                             if (ROLE == RoleFlag.BRIDGE.getIndex()) {
                                                 //for BRIDGE
@@ -4732,13 +4734,13 @@ public class Control extends Service {
                                                 iterator = IPTable.keySet().iterator();
                                                 while (iterator.hasNext()) {
                                                     tempkey = iterator.next().toString();
-                                                    //if (!recv_ip.equals(tempkey)) {
+                                                    if ((!"".equals(recv_ip))&!recv_ip.equals(tempkey)) {
                                                         senddp = new DatagramPacket(message.getBytes(), message.length(),
                                                                 InetAddress.getByName(tempkey), IP_port_controller_collect);
                                                         senddsk.send(senddp);
                                                         //Log.d("Miga", "(Relay)Send the message: " + message + " to " + tempkey);
                                                         //s_status = "State : (Relay)Send the message: " + message + " to " + tempkey;
-                                                    //}
+                                                    }
                                                 }
                                                 if(ROLE==RoleFlag.BRIDGE.getIndex()) {
                                                     //for BRIDGE

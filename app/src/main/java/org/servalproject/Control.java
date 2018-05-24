@@ -2940,7 +2940,15 @@ public class Control extends Service {
                             //20180411註解下面，因為ROLE==GO時也會用unicast接收
                             //if (ROLE == RoleFlag.CLIENT.getIndex() || ROLE == RoleFlag.HYBRID.getIndex()|| ROLE == RoleFlag.BRIDGE.getIndex()) {
                             //unicast
-                            receivedskt_pc.receive(receivedpkt_pc);//把接收到的data存在receivedp.
+                            try {
+                                receivedskt_pc.setSoTimeout(20000);
+                                receivedskt_pc.receive(receivedpkt_pc);//把接收到的data存在receivedp.
+                            }catch (SocketTimeoutException e) {
+                                Log.d("Miga","Receive_peer_count_unicastsocket time out");
+                                if (ControllerAuto)
+                                    Thread.sleep(600000);//sleep 600sec , 10mins
+                            }
+                            //receivedskt_pc.receive(receivedpkt_pc);//把接收到的data存在receivedp.
                             RecvMsg_pc = new String(lMsg_pc, 0, receivedpkt_pc.getLength());//將接收到的IMsg轉換成String型態
                             //Log.d("Miga", "I got message from unicast" + RecvMsg_pc);
                             //s_status = "I got message from unicast" + RecvMsg_pc;
@@ -2966,7 +2974,16 @@ public class Control extends Service {
                         if (receivedpkt_pc != null) {
                             if (ROLE == RoleFlag.GO.getIndex() || ROLE == RoleFlag.HYBRID.getIndex()) {
                                 //multicast
-                                recvPeerSocket.receive(receivedpkt_pc);//recvPeerSocket_ port:6790
+                                try {
+                                    recvPeerSocket.setSoTimeout(20000);
+                                    recvPeerSocket.receive(receivedpkt_pc);//把接收到的data存在receivedp.
+                                }catch (SocketTimeoutException e) {
+                                    Log.d("Miga","Receive_peer_count_multicastsocket time out");
+                                    if(ControllerAuto){
+                                        Thread.sleep(600000);//sleep 600sec , 10mins
+                                    }
+                                }
+                                //recvPeerSocket.receive(receivedpkt_pc);//recvPeerSocket_ port:6790
                                 RecvMsg_pc = new String(lMsg_pc, 0, receivedpkt_pc.getLength());//將接收到的IMsg轉換成String型態
                                 /*if(ROLE == RoleFlag.HYBRID.getIndex()) {
                                     Log.d("Miga", "I got message from multicast" + RecvMsg_pc);
@@ -3340,8 +3357,16 @@ public class Control extends Service {
                     if (IsP2Pconnect) {
                         if (receivedpkt_cn != null) {
                             if (ROLE == RoleFlag.CLIENT.getIndex() || ROLE == RoleFlag.HYBRID.getIndex() || ROLE == RoleFlag.BRIDGE.getIndex()) {
+                                try {
+                                    receivedskt_cn.setSoTimeout(20000);
+                                    receivedskt_cn.receive(receivedpkt_cn);//把接收到的data存在receivedp.
+                                }catch (SocketTimeoutException e) {
+                                    Log.d("Miga","Receive_Cluster_Name_unicastsocket time out");
+                                    if (ControllerAuto)
+                                        Thread.sleep(600000);//sleep 600sec , 10mins
+                                }
                                 //unicast
-                                receivedskt_cn.receive(receivedpkt_cn);//把接收到的data存在receivedp.
+                                //receivedskt_cn.receive(receivedpkt_cn);//把接收到的data存在receivedp.
                                 RecvMsg_cn = new String(lMsg_cn, 0, receivedpkt_cn.getLength());//將接收到的IMsg轉換成String型態
                                 //Log.d("Miga", "I got message from unicast" + message);
                                 //s_status = "I got message from unicast" + message;
@@ -3367,7 +3392,16 @@ public class Control extends Service {
                         if (receivedpkt_cn != null) {
                             if (ROLE == RoleFlag.GO.getIndex() || ROLE == RoleFlag.HYBRID.getIndex()) {
                                 //unicast
-                                recvCNSocket.receive(receivedpkt_cn);//把接收到的data存在receivedp.
+                                try {
+                                    recvCNSocket.setSoTimeout(20000);
+                                    recvCNSocket.receive(receivedpkt_cn);//把接收到的data存在receivedp.
+                                }catch (SocketTimeoutException e) {
+                                    Log.d("Miga","Receive_Cluster_Name_multicastsocket time out");
+                                    if(ControllerAuto){
+                                        Thread.sleep(600000);//sleep 600sec , 10mins
+                                    }
+                                }
+                                //recvCNSocket.receive(receivedpkt_cn);//把接收到的data存在receivedp.
                                 RecvMsg_cn = new String(lMsg_cn, 0, receivedpkt_cn.getLength());//將接收到的IMsg轉換成String型態
                                 //Log.d("Miga", "I got message from unicast" + message);
                                 //s_status = "I got message from unicast" + message;
@@ -4055,7 +4089,7 @@ public class Control extends Service {
                         }
                         Log.d("Miga","RunNewConnectionTime: "+RunNewConnectionTime);
                         if(RunNewConnectionTime==0)
-                            Thread.sleep(10000);//睡10秒，讓裝置之間能夠有充分的時間蒐集同個cluster內的其他裝置的SSID,POWER
+                            Thread.sleep(45000);//睡10秒，讓裝置之間能夠有充分的時間蒐集同個cluster內的其他裝置的SSID,POWER
                         else
                             Thread.sleep(90000);//sleep 1 mins
                         //進行Controller候選人的排序
@@ -4079,6 +4113,10 @@ public class Control extends Service {
                             IsController = true;//這個裝置是Controller
                             Log.d("Miga","I'm the controller");
 
+                            //20180504 Start : 實驗用，若要讓裝置自己找neighbor則將getMyNeighbor註解
+                            Thread.sleep(10000);
+                            getMyNeighbor(WiFiApName);//取得我的neighbor
+                            //20180504 End
                             while(!IsNeighborCollect){
                                 ;//等待蒐集完Neighbor資料才繼續往下做
                             }
@@ -4119,6 +4157,10 @@ public class Control extends Service {
                                 t_Receive_info_new_connect = new Receive_info_new_connect();
                                 t_Receive_info_new_connect.start();
                             }
+                            //20180504 Start : 實驗用，若要讓裝置自己找neighbor則將getMyNeighbor註解
+                            Thread.sleep(10000);
+                            getMyNeighbor(WiFiApName);//取得我的neighbor
+                            //20180504 End
                         }
                     }
                 }
@@ -4357,7 +4399,7 @@ public class Control extends Service {
                         Thread.sleep(randomnum);
                         //Log.d("Miga","Sleep:"+randomnum);
                         if( ControllerAuto && IsNeighborCollect ){ //要執行controller且已經蒐集完鄰居的資料了
-                            message = WiFiApName + "#" + NeighborList + "#" +Integer.toString(NeighborListNum) + "#" + Integer.toString(power_level) + "#" + WiFiApName + "#" + "None"+ "#" + "None";//SSID,Neighbor,Neighbornum,Power,ClusterName,WiFi interface,P2P interface
+                            message = WiFiApName + "#" + NeighborList + "#" +Integer.toString(NeighborListNum) + "#" + Integer.toString(power_level) + "#" + WiFiApName + "#" + "None"+ "#" + "None"+ "#" + "5";//SSID,Neighbor,Neighbornum,Power,ClusterName,WiFi interface,P2P interface,ttl
                         }else if(!IsNeighborCollect) {//還沒蒐集完neighbor就跑舊有info
                             message = WiFiApName + "#" + Cluster_Name + "#" + "5" + "#" + Integer.toString(power_level);// 0: source SSID 1: cluster name 2: TTL 3:電池電量 //電池電量新增於20180508(Controller判斷用)
                         }
@@ -4389,8 +4431,8 @@ public class Control extends Service {
                                 multicsk = new MulticastSocket(6793);//6793: for controller
                                 msgPkt = new DatagramPacket(message.getBytes(), message.length(), multicgroup, 6793);
                                 multicsk.send(msgPkt);
-                                //Log.v("Miga", "multicsk send message:" + message);
-                                //s_status = "multicsk send message" + message;
+                                Log.v("Miga", "multicsk send message:" + message);
+                                s_status = "multicsk send message" + message;
                             }
                         }
                         senddsk.close();// 20180520 關socket
@@ -4440,7 +4482,7 @@ public class Control extends Service {
         private DatagramSocket senddsk;
         private Iterator iterator;
         private String message, tempkey, recv_ip;
-        private String[] temp;
+        private String[] temp,tempnew;
         private MulticastSocket multicsk;//Miga20180312
 
 
@@ -4545,68 +4587,87 @@ public class Control extends Service {
                                 Log.d("Miga", "0Receive_info/Controller_record: " + Collect_contain);
                                 int randomnum = randomWithRange(2,3)*1000;
                                 Thread.sleep(randomnum);
-                            }else{//不是Controller的要幫忙Relay packet
-                                try {
-                                    message = RecvMsg_cinfo;
-                                    senddsk = null;
-                                    senddsk = new DatagramSocket();
-                                    // unicast
-                                    iterator = IPTable.keySet().iterator();
-                                    while (iterator.hasNext()) {
-                                        tempkey = iterator.next().toString();
-                                        //if (!recv_ip.equals(tempkey)) {
-                                            senddp = new DatagramPacket(message.getBytes(), message.length(),
-                                                    InetAddress.getByName(tempkey), IP_port_controller_collect);
-                                            senddsk.send(senddp);
-                                            //Log.d("Miga", "(Relay)Send the message: " + message + " to " + tempkey);
-                                            //s_status = "State : (Relay)Send the message: " + message + " to " + tempkey;
-                                        //}
-                                    }
-                                    if(ROLE == RoleFlag.BRIDGE.getIndex()) {
-                                        //for BRIDGE
-                                        senddp = new DatagramPacket(message.getBytes(), message.length(),
-                                                InetAddress.getByName("192.168.49.1"), IP_port_controller_collect);
-                                        senddsk.send(senddp);
-                                    }
+                            }else {//不是Controller的要幫忙Relay packet
+                                message = RecvMsg_cinfo;
+                                tempnew = message.split("#");
+                                if (tempnew.length > 5)
+                                {
+                                    try {
 
-                                } catch (Exception e) {
-                                    e.printStackTrace();
-                                    Log.d("Miga", "0Receive_info Exception : at relay pkt (unicast) :" + e.toString());
-                                    s_status = "0Receive_info Exception : at relay pkt (unicast) :" + e.toString();
-                                }
-                                try {
-                                    if (ROLE == RoleFlag.HYBRID.getIndex() || ROLE == RoleFlag.BRIDGE.getIndex()) {
-                                        if (ROLE == RoleFlag.HYBRID.getIndex()) {//20180501 新增HYBRID轉傳給CLIENT的，測試可成功
-                                            // broadcast
-                                            senddp = new DatagramPacket(message.getBytes(), message.length(),
-                                                    InetAddress.getByName("192.168.49.255"), IP_port_controller_collect);
-                                            senddsk.send(senddp);
+                                        // TTL -1
+                                        try {
+                                            if (Integer.valueOf(tempnew[7].trim()) > 0) {
+                                                tempnew[7] = String.valueOf(Integer.valueOf(tempnew[7].trim()) - 1).trim();//經過一個router因此-1
+                                            }
+                                            //Log.d("Miga","Temp[2]:"+temp[2]);
+                                        } catch (Exception e) {
+                                            e.printStackTrace();
+                                            Log.d("Miga", "0 Receive_info Exception : at temp[7] _" + e.toString());
+                                            s_status = "0 Receive_info Exception : at temp[7] _" + e.toString();
                                         }
-                                        //multicast
-                                        if (mConnectivityManager != null) {
-                                            mNetworkInfo = mConnectivityManager.getNetworkInfo(ConnectivityManager.TYPE_WIFI);
-                                            if (mNetworkInfo.isConnected()) {
-                                                multicgroup = InetAddress.getByName("224.0.0.3");//指定multicast要發送的group
-                                                multicsk = null;
-                                                multicsk = new MulticastSocket(6793);//6790: for peertable update
-                                                msgPkt = new DatagramPacket(message.getBytes(), message.length(), multicgroup, 6793);
-                                                multicsk.send(msgPkt);
-                                                multicsk.close();
-                                                //Log.v("Miga", "multicsk send message:" + message);
-                                                //s_status = "multicsk send message" + message;
+                                        if (Integer.valueOf(tempnew[7].trim()) > 0) {
+                                            message = tempnew[0] + "#" + tempnew[1] + "#" + tempnew[2] + "#" + tempnew[3] + "#" + tempnew[4] + "#" + tempnew[5] + "#" + tempnew[6] + "#" +tempnew[7];//SSID,Neighbor,Neighbornum,Power,ClusterName,WiFi interface,P2P interface,ttl;
+                                            senddsk = null;
+                                            senddsk = new DatagramSocket();
+                                            // unicast
+                                            iterator = IPTable.keySet().iterator();
+                                            while (iterator.hasNext()) {
+                                                tempkey = iterator.next().toString();
+                                                //if (!recv_ip.equals(tempkey)) {
+                                                senddp = new DatagramPacket(message.getBytes(), message.length(),
+                                                        InetAddress.getByName(tempkey), IP_port_controller_collect);
+                                                senddsk.send(senddp);
+                                                //Log.d("Miga", "(Relay)Send the message: " + message + " to " + tempkey);
+                                                //s_status = "State : (Relay)Send the message: " + message + " to " + tempkey;
+                                                //}
+                                            }
+                                            if (ROLE == RoleFlag.BRIDGE.getIndex()) {
+                                                //for BRIDGE
+                                                senddp = new DatagramPacket(message.getBytes(), message.length(),
+                                                        InetAddress.getByName("192.168.49.1"), IP_port_controller_collect);
+                                                senddsk.send(senddp);
                                             }
                                         }
+
+                                    } catch (Exception e) {
+                                        e.printStackTrace();
+                                        Log.d("Miga", "0Receive_info Exception : at relay pkt (unicast) :" + e.toString());
+                                        s_status = "0Receive_info Exception : at relay pkt (unicast) :" + e.toString();
                                     }
-                                } catch (Exception e) {
-                                    e.printStackTrace();
-                                    Log.d("Miga", "0Receive_info Exception : at relay pkt (multicast) _" + e.toString());
-                                    s_status = "0Receive_info Exception : at relay pkt (multicast) _" + e.toString();
+                                    try {
+                                        if (ROLE == RoleFlag.HYBRID.getIndex() || ROLE == RoleFlag.BRIDGE.getIndex()) {
+                                            if (ROLE == RoleFlag.HYBRID.getIndex()) {//20180501 新增HYBRID轉傳給CLIENT的，測試可成功
+                                                // broadcast
+                                                senddp = new DatagramPacket(message.getBytes(), message.length(),
+                                                        InetAddress.getByName("192.168.49.255"), IP_port_controller_collect);
+                                                senddsk.send(senddp);
+                                            }
+                                            //multicast
+                                            if (mConnectivityManager != null) {
+                                                mNetworkInfo = mConnectivityManager.getNetworkInfo(ConnectivityManager.TYPE_WIFI);
+                                                if (mNetworkInfo.isConnected()) {
+                                                    multicgroup = InetAddress.getByName("224.0.0.3");//指定multicast要發送的group
+                                                    multicsk = null;
+                                                    multicsk = new MulticastSocket(6793);//6790: for peertable update
+                                                    msgPkt = new DatagramPacket(message.getBytes(), message.length(), multicgroup, 6793);
+                                                    multicsk.send(msgPkt);
+                                                    multicsk.close();
+                                                    //Log.v("Miga", "multicsk send message:" + message);
+                                                    //s_status = "multicsk send message" + message;
+                                                }
+                                            }
+                                        }
+                                    } catch (Exception e) {
+                                        e.printStackTrace();
+                                        Log.d("Miga", "0Receive_info Exception : at relay pkt (multicast) _" + e.toString());
+                                        s_status = "0Receive_info Exception : at relay pkt (multicast) _" + e.toString();
+                                    }
+                                    if (senddsk != null)
+                                        senddsk.close();// 20180520 關socket
+                                    if (multicsk != null)
+                                        multicsk.close();// 20180520 關socket
                                 }
-                                if (senddsk != null)
-                                    senddsk.close();// 20180520 關socket
-                                if(multicsk!=null)
-                                    multicsk.close();// 20180520 關socket
-                            }
+                            }////End 不是Controller的要幫忙Relay packet
 
                         }else if(!IsNeighborCollect) {//在鄰居資料蒐集完之前都是跑舊的
                             if (temp[0] != null && temp[1] != null && temp[2] != null && WiFiApName != null) {
@@ -5227,6 +5288,10 @@ public class Control extends Service {
             return "6jq1pSN6";
         else if(SSID.equals("Android_9722"))
             return "73EYTubA";
+        else if(SSID.equals("Android_ea4a"))
+            return "879kFeeM";
+        else if(SSID.equals("Android_988f"))
+            return "HRMac4VG";
         else
             return "dontkown";
 
@@ -5490,6 +5555,10 @@ public class Control extends Service {
             return "62:45:cb:21:78:cf";
         else if(SSID.equals("Android_9722"))
             return "2e:4d:54:30:3f:b7";
+        else if(SSID.equals("Android_ea4a"))
+            return "8a:d7:f6:90:9a:82";
+        else if(SSID.equals("Android_988f"))
+            return "2c:4d:54:32:cd:4b";
         else
             return "dontkown";
 
@@ -5520,6 +5589,10 @@ public class Control extends Service {
             return "DIRECT-LK-Android_e9dd";
         else if(SSID.equals("Android_9722"))
             return "DIRECT-Wd-Android_9722";
+        else if(SSID.equals("Android_ea4a"))
+            return "DIRECT-qm-Android_ea4a";
+        else if(SSID.equals("Android_988f"))
+            return "DIRECT-yz-Android_988f";
         else
             return "dontkown";
     }
@@ -5551,5 +5624,72 @@ public class Control extends Service {
         IPTable.clear();//IPTable清除
         //Log.d("Miga", "VariableInitial/IPTable:" + IPTable);
         s_status = "VariableInitial/IPTable:" + IPTable;
+    }
+
+    //做實驗要用到的neighbor
+    public void getMyNeighbor(String SSID){
+        try {
+            if (SSID.equals("Android_4a9e")) {
+                addNeighbor("", "", 2);
+                IsNeighborCollect = true;
+            } else if (SSID.equals("Android_e9dd")) {
+                addNeighbor("Android_ea4a#Android_9722", getDevicePwd("Android_ea4a") + "#" + getDevicePwd("Android_9722"), 2);
+                Thread.sleep(4000);
+                IsNeighborCollect = true;
+            } else if (SSID.equals("Android_9722")) {
+                addNeighbor("Android_988f#Android_e9dd", getDevicePwd("Android_988f") + "#" + getDevicePwd("Android_e9dd"), 2);
+                Thread.sleep(4000);
+                IsNeighborCollect = true;
+            } else if (SSID.equals("Android_ea4a")) {
+                addNeighbor("Android_988f#Android_e9dd", getDevicePwd("Android_988f") + "#" + getDevicePwd("Android_e9dd"), 2);
+                Thread.sleep(4000);
+                IsNeighborCollect = true;
+            } else if (SSID.equals("Android_988f")) {
+                addNeighbor("Android_ea4a#Android_9722", getDevicePwd("Android_ea4a") + "#" + getDevicePwd("Android_9722"), 2);
+                Thread.sleep(4000);
+                IsNeighborCollect = true;
+            } else {
+
+            }
+        }catch (Exception e){
+
+        }
+            //return "dontkown";
+    }
+
+    public void addNeighbor (String SSID,String key,int neighborNum){
+        String [] tempSSID,tempkey;
+        tempSSID =SSID.split("#");
+        tempkey = key.split("#");
+        for(int i =0; i<neighborNum;i++) {
+            if (!IsNeighborCollect) {//還沒蒐集過資料才進來，避免重複儲存相同的資料到Neighbor_record
+                Neighbor_set data = new Neighbor_set(tempSSID[i], tempkey[i]);
+                if (!Neighbor_record.contains(data)) {
+                    Neighbor_record.add(data);
+                }
+                if (NeighborList == "") {
+                    NeighborList += tempSSID[i] + "@";
+                } else {
+                    if (NeighborList.indexOf(tempSSID[i]) != -1) {//有包含
+                    } else {
+                        NeighborList += tempSSID[i] + "@";
+                        //Log.d("Miga","NeighborList: "+NeighborList);
+                    }
+                }
+            }
+        }
+        //目的應該只是要print出有收集到哪些data
+        int obj_num = 0;
+        String Collect_contain = "";
+        Neighbor_set tmp;
+        for (int i = 0; i < Neighbor_record.size(); i++) {
+            tmp = (Neighbor_set) Neighbor_record.get(i);
+            Collect_contain = Collect_contain + obj_num + " : " + tmp.toString() + " ";
+            obj_num++;
+        }
+        //Log.d("Miga", "WiFi_Connect/Neighbor_record: " + Collect_contain);
+        NeighborListNum = Neighbor_record.size();
+        Log.d("Miga", "addNeighbor/NeighborListNum: " + NeighborListNum + ", NeighborList: " + NeighborList);
+        return;//資料蒐集結束
     }
 }

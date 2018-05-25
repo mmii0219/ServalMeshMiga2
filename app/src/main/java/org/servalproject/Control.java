@@ -85,6 +85,7 @@ import org.servalproject.servaldna.ServalDCommand;
 import org.servalproject.servaldna.ServalDFailureException;
 import org.servalproject.ui.Networks;
 import org.servalproject.wifidirect.AutoWiFiDirect;
+import org.servalproject.Graph;//For Controller Kruskal’s Minimum Spanning Tree Algorithm
 
 import java.io.IOException;
 import java.util.Collection;
@@ -3499,6 +3500,7 @@ public class Control extends Service {
         Final_Controller_record = new ArrayList<ControllerData_set>();
         getBatteryCapacity();
         callAsynchronousTask();//Wang 20180427
+        //MST(); For Controller second test 20180525
 
 
 
@@ -5694,4 +5696,47 @@ public class Control extends Service {
         Log.d("Miga", "addNeighbor/NeighborListNum: " + NeighborListNum + ", NeighborList: " + NeighborList);
         return;//資料蒐集結束
     }
+    //第二步驟，若有多個CN，則選N-1個edge出來連線
+    public void MST(){
+        /* Let us create following weighted graph
+                 10
+            0--------1
+            |  \     |
+           6|   5\   |15
+            |      \ |
+            2--------3
+                4       */
+        int V = 4;  // Number of vertices in graph
+        int E = 5;  // Number of edges in graph
+        Graph graph = new Graph(V, E);
+
+        // add edge 0-1
+        graph.edge[0].src = 0;
+        graph.edge[0].dest = 1;
+        graph.edge[0].weight = 10;
+
+        // add edge 0-2
+        graph.edge[1].src = 0;
+        graph.edge[1].dest = 2;
+        graph.edge[1].weight = 6;
+
+        // add edge 0-3
+        graph.edge[2].src = 0;
+        graph.edge[2].dest = 3;
+        graph.edge[2].weight = 5;
+
+        // add edge 1-3
+        graph.edge[3].src = 1;
+        graph.edge[3].dest = 3;
+        graph.edge[3].weight = 15;
+
+        // add edge 2-3
+        graph.edge[4].src = 2;
+        graph.edge[4].dest = 3;
+        graph.edge[4].weight = 4;
+
+        graph.KruskalMST();
+    }
+
+
 }

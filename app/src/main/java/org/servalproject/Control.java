@@ -304,6 +304,7 @@ public class Control extends Service {
     private boolean IsNewConnectionComplete = false;//判斷新的連線是否已完成
     private int RunNewConnectionTime = 0;//用來儲存執行次數
     private Thread t_New_Connection_Func = null;
+    private int DifferentCNnum = 0;//不同CN的數量
 
     //For Controller Start
     private List<CandidateController_set> CandController_record;
@@ -4275,6 +4276,7 @@ public class Control extends Service {
                 Each_Cluster_name.add(second_round_Controller_record.get(i).getClusterName());
             }
         }
+        DifferentCNnum = Each_Cluster_name.size();//取得不同CN的數量
         if(Each_Cluster_name.size()==1) {
             //把第一階段整理完後的資料丟到最後階段
             Final_Controller_record.clear();//清除前面的，避免重複儲存
@@ -5628,6 +5630,7 @@ public class Control extends Service {
         IPTable.clear();//IPTable清除
         //Log.d("Miga", "VariableInitial/IPTable:" + IPTable);
         s_status = "VariableInitial/IPTable:" + IPTable;
+        DifferentCNnum = 0;
     }
 
     //做實驗要用到的neighbor
@@ -5706,10 +5709,11 @@ public class Control extends Service {
             |      \ |
             2--------3
                 4       */
-        int V = 4;  // Number of vertices in graph
+        /*int V = 4;  // Number of vertices in graph
         int E = 5;  // Number of edges in graph
         Graph graph = new Graph(V, E);
-
+        */
+        /*
         // add edge 0-1
         graph.edge[0].src = 0;
         graph.edge[0].dest = 1;
@@ -5733,10 +5737,45 @@ public class Control extends Service {
         // add edge 2-3
         graph.edge[4].src = 2;
         graph.edge[4].dest = 3;
-        graph.edge[4].weight = 4;
+        graph.edge[4].weight = 4;*/
+
+
+        int V = second_round_Controller_record.size();  // Number of vertices in graph
+        int E = getGraphEdgeNum();  // Number of edges in graph
+        Graph graph = new Graph(V, E);
+
+        for( int i=0; i<V;i++ ){//i是每個vertex
+            for( int j=0; j<getDeviceNeighNum(i);j++){//j上限值是第i個裝置他的鄰居數量
+
+            }
+
+        }
 
         graph.KruskalMST();
     }
-
+    //回傳second階段的device對應到的index
+    public int getDeviceIndex (String SSID){
+        for(int i = 0; i < second_round_Controller_record.size() ; i++){
+            if(SSID.equals(second_round_Controller_record.get(i).getSSID()))
+                return i;
+        }
+        return -1;//找不到
+    }
+    //輸入index，回傳對應到的裝置SSID
+    public String getIndexDevice(int index){
+        return second_round_Controller_record.get(index).getSSID();
+    }
+    //回傳整個Graph的Edge數量
+    public int getGraphEdgeNum (){
+        int num=0;
+        for(int i=0; i<second_round_Controller_record.size(); i++){
+            num += Integer.valueOf(second_round_Controller_record.get(i).getNeighborNum());
+        }
+        return num/2;
+    }
+    //回傳device neighbor數量
+    public int getDeviceNeighNum (int index){
+        return Integer.valueOf(second_round_Controller_record.get(index).getNeighborNum());
+    }
 
 }

@@ -5739,14 +5739,18 @@ public class Control extends Service {
         graph.edge[4].dest = 3;
         graph.edge[4].weight = 4;*/
 
+        String [] tempNeighbor;
 
         int V = second_round_Controller_record.size();  // Number of vertices in graph
         int E = getGraphEdgeNum();  // Number of edges in graph
         Graph graph = new Graph(V, E);
 
         for( int i=0; i<V;i++ ){//i是每個vertex
-            for( int j=0; j<getDeviceNeighNum(i);j++){//j上限值是第i個裝置他的鄰居數量
-
+            tempNeighbor = second_round_Controller_record.get(i).getNeighbor().split("@");
+            for( int j=0; j<tempNeighbor.length;j++){//j上限值是第i個裝置他的鄰居數量
+                graph.edge[i].src = i;
+                graph.edge[i].dest = getDeviceIndex(tempNeighbor[j]);
+                graph.edge[i].weight = getWeight(i,getDeviceIndex(tempNeighbor[j]));
             }
 
         }
@@ -5778,4 +5782,12 @@ public class Control extends Service {
         return Integer.valueOf(second_round_Controller_record.get(index).getNeighborNum());
     }
 
+    public int getWeight(int device1index, int device2index){
+        /*檢查這兩個裝置是否有連再一起，
+            若沒有則回傳其中一個裝置電量最小的當作weight。
+            若有則將Weight設為5000，為了讓等下MST一定會挑到這個weight(因為Controller已經分配這兩條是要連的了)
+            MST部分則是發現Weight是5000的，則不去更新Second_round_controller_record。只需更新挑出來的不是5000的即可
+        */
+        return -1;
+    }
 }

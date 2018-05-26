@@ -3501,8 +3501,7 @@ public class Control extends Service {
         Final_Controller_record = new ArrayList<ControllerData_set>();
         getBatteryCapacity();
         callAsynchronousTask();//Wang 20180427
-        //MST(); For Controller second test 20180525
-
+        MST(); //For Controller second test 20180525
 
 
     }
@@ -5709,11 +5708,11 @@ public class Control extends Service {
             |      \ |
             2--------3
                 4       */
-        /*int V = 4;  // Number of vertices in graph
+ /*       int V = 4;  // Number of vertices in graph
         int E = 5;  // Number of edges in graph
         Graph graph = new Graph(V, E);
-        */
-        /*
+
+
         // add edge 0-1
         graph.edge[0].src = 0;
         graph.edge[0].dest = 1;
@@ -5738,22 +5737,52 @@ public class Control extends Service {
         graph.edge[4].src = 2;
         graph.edge[4].dest = 3;
         graph.edge[4].weight = 4;*/
+        /*
+        * 0 : Android_ea4a Android_988f@Android_e9dd@ 2 1200 Android_e9dd Android_e9dd None
+        1 : Android_9722 Android_988f@Android_e9dd@ 2 1410 Android_e9dd Android_e9dd None
+        2 : Android_988f Android_ea4a@Android_9722@ 2 2700 Android_988f None None
+        3 : Android_e9dd Android_ea4a@Android_9722@ 2 2730 Android_e9dd None GO
+
+        *
+        * */
+        //也加入自己的data
+        ControllerData_set device0 = new ControllerData_set("Android_ea4a", "Android_988f@Android_e9dd@", Integer.toString(2),
+                String.valueOf(1200), "Android_e9dd", "Android_e9dd", "None");
+        second_round_Controller_record.add(device0);
+        ControllerData_set device1 = new ControllerData_set("Android_9722", "Android_988f@Android_e9dd@", Integer.toString(2),
+                String.valueOf(1410), "Android_e9dd", "Android_e9dd", "None");
+        second_round_Controller_record.add(device1);
+        ControllerData_set device2 = new ControllerData_set("Android_988f", "Android_ea4a@Android_9722@", Integer.toString(2),
+                String.valueOf(2700), "Android_988f", "None", "None");
+        second_round_Controller_record.add(device2);
+        ControllerData_set device3 = new ControllerData_set("Android_e9dd", "Android_ea4a@Android_9722@", Integer.toString(2),
+                String.valueOf(2730), "Android_e9dd", "None", "GO");
+        second_round_Controller_record.add(device3);
 
         String [] tempNeighbor;
 
         int V = second_round_Controller_record.size();  // Number of vertices in graph
         int E = getGraphEdgeNum();  // Number of edges in graph
+        //Log.d("Miga","V:"+V+",E: "+E);
         Graph graph = new Graph(V, E);
-
+        int indexnum=0,neighborindex=0;
         for( int i=0; i<V;i++ ){//i是每個vertex
             tempNeighbor = second_round_Controller_record.get(i).getNeighbor().split("@");
             for( int j=0; j<tempNeighbor.length;j++){//j上限值是第i個裝置他的鄰居數量
-                graph.edge[i].src = i;
-                graph.edge[i].dest = getDeviceIndex(tempNeighbor[j]);
-                graph.edge[i].weight = getWeight(i,getDeviceIndex(tempNeighbor[j]));
+                neighborindex=getDeviceIndex(tempNeighbor[j]);
+                if(i < neighborindex ) {//只去看index比自己大的鄰居，以避免重複儲存相同的edge。例如: 0->1 , 1->0
+                    graph.edge[indexnum].src = i;
+                    graph.edge[indexnum].dest = neighborindex;
+                    graph.edge[indexnum].weight = getWeight(i, tempNeighbor[j]);
+                    indexnum++;
+                }
             }
 
         }
+        for(int i =0;i<4;i++){
+            Log.d("Miga","Graph "+i+":"+graph.edge[i].src+" "+graph.edge[i].dest+" "+graph.edge[i].weight);
+        }
+        //Log.d("Miga","Graph:"+graph);
 
         graph.KruskalMST();
     }
@@ -5782,12 +5811,18 @@ public class Control extends Service {
         return Integer.valueOf(second_round_Controller_record.get(index).getNeighborNum());
     }
 
-    public int getWeight(int device1index, int device2index){
-        /*檢查這兩個裝置是否有連再一起，
+    public int getWeight(int device1index, String device2SSID){
+        /*檢查這兩個裝置是否已經有連再一起，
             若沒有則回傳其中一個裝置電量最小的當作weight。
             若有則將Weight設為5000，為了讓等下MST一定會挑到這個weight(因為Controller已經分配這兩條是要連的了)
             MST部分則是發現Weight是5000的，則不去更新Second_round_controller_record。只需更新挑出來的不是5000的即可
         */
-        return -1;
+        if(second_round_Controller_record.get(device1index).getWiFiInterface().equals(device2SSID)){
+            //相等的話表示有連再一起了
+            return 5000;
+        }else{
+            //沒有連再一起
+            return Math.min(Integer.valueOf(second_round_Controller_record.get(device1index).getPOWER()),Integer.valueOf(second_round_Controller_record.get(getDeviceIndex(device2SSID)).getPOWER()));
+        }
     }
 }

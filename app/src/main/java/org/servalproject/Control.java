@@ -305,6 +305,7 @@ public class Control extends Service {
     private int RunNewConnectionTime = 0;//用來儲存執行次數
     private Thread t_New_Connection_Func = null;
     private int DifferentCNnum = 0;//不同CN的數量
+    private String MSTResult="";//做完MST之後的結果
 
     //For Controller Start
     private List<CandidateController_set> CandController_record;
@@ -5783,8 +5784,10 @@ public class Control extends Service {
             Log.d("Miga","Graph "+i+":"+graph.edge[i].src+" "+graph.edge[i].dest+" "+graph.edge[i].weight);
         }
         //Log.d("Miga","Graph:"+graph);
+        MSTResult = graph.KruskalMST();
+        Log.d("Miga","graph:"+MSTResult);//1@3@5000#0@3@5000#1@2@1410# (src@dest@weight)
+        updateSecondRecord();
 
-        graph.KruskalMST();
     }
     //回傳second階段的device對應到的index
     public int getDeviceIndex (String SSID){
@@ -5824,5 +5827,100 @@ public class Control extends Service {
             //沒有連再一起
             return Math.min(Integer.valueOf(second_round_Controller_record.get(device1index).getPOWER()),Integer.valueOf(second_round_Controller_record.get(getDeviceIndex(device2SSID)).getPOWER()));
         }
+    }
+
+    public void updateSecondRecord(){
+        //boolean Complete = false;
+        String AllEdge[],EachEdage[];//AllEdge是所有的edge用#來區分；EachEdge是每個edge詳細的，用＠來區分。
+        String oldCN="";
+        int SrcDeviceIndex=0,DestDeviceIndex=0;
+        ControllerData_set tmp;
+        AllEdge = MSTResult.split("#");//AllEdge[0]=1@3@5000 , AllEdge[1]=0@3@5000
+
+        Log.d("Miga","ALLEged legth:"+AllEdge.length);
+        for(int i=0 ;i<AllEdge.length;i++){
+            //處理每一個edge
+            Log.d("Miga","ALLEged:"+AllEdge[i]);
+            if(!AllEdge[i].contains("5000")){
+                //若是這個edge沒有5000，表示是要進行更新的。
+                Log.d("Miga","Edge: "+ AllEdge[i] +" has  not exist!");
+                EachEdage = AllEdge[i].split("@");//區分出EachEdage[0]src, EachEdage[1]dest, EachEdage[2]weight
+                SrcDeviceIndex =Integer.parseInt(EachEdage[0]);
+                DestDeviceIndex =Integer.parseInt(EachEdage[1]);
+                if(CheckDeviceWifiConnect(SrcDeviceIndex)){//src Wifi是空的
+                    if(!CheckDeviceP2PConnect(DestDeviceIndex).equals("Cant")){//dest的p2p不等於Cant，表示dest是GO或是NONE。
+                        // src可以用wifi去連dest
+                        Log.d("Miga", "before edit: " + second_round_Controller_record.get(SrcDeviceIndex).toString());
+                        oldCN = second_round_Controller_record.get(SrcDeviceIndex).getClusterName();//先把現在要連的這個人的舊有的ClusterName存起來
+                        // src連線資料更新
+                        tmp = new ControllerData_set(second_round_Controller_record.get(SrcDeviceIndex).getSSID(), second_round_Controller_record.get(SrcDeviceIndex).getNeighbor(),
+                                second_round_Controller_record.get(SrcDeviceIndex).getNeighborNum(), second_round_Controller_record.get(SrcDeviceIndex).getPOWER(),
+                                second_round_Controller_record.get(DestDeviceIndex).getClusterName(), second_round_Controller_record.get(DestDeviceIndex).getSSID(), "None");
+                        second_round_Controller_record.set(SrcDeviceIndex, tmp);//更新SrcDeviceIndex資料
+                        Log.d("Miga", "after edit: " + second_round_Controller_record.get(SrcDeviceIndex).toString());
+                        update_Neighbor_data(second_round_Controller_record.get(DestDeviceIndex).getSSID(), "X", "X", "X", "X", "X", "GO");
+                        UpdateSameCNNeighbor(oldCN,second_round_Controller_record.get(DestDeviceIndex).getClusterName());//把oldCluster相關的Device的clustername都更新為新的CN
+                        return;
+                    }
+                }else{//src wifi不是空的，因此src和dest互換。（目前連線主要都是以wifi連出去為主，若是兩個device的wifi都滿了，才去考慮P2P）
+                    SrcDestExchange(DestDeviceIndex,SrcDeviceIndex);
+                }
+
+            }else{
+                Log.d("Miga","Edge: "+ AllEdge[i] +" has exist!");
+            }
+        }
+        ControllerData_set tempprint;
+        int obj_num = 0;
+        String Collect_contain = "";
+
+        //print出排序後的data, 檢查用
+        for (int i = 0; i < second_round_Controller_record.size(); i++) {
+            tempprint = (ControllerData_set) second_round_Controller_record.get(i);
+            Collect_contain = Collect_contain + obj_num + " : " + tempprint.toString() + " ";
+            obj_num++;
+        }
+        Log.d("Miga", "updateSecondRecord/second_round_Controller_record" + Collect_contain);
+    }
+    //檢查該device的wifi interface是否是空的
+    public boolean CheckDeviceWifiConnect(int index){
+        if(second_round_Controller_record.get(index).getWiFiInterface().contains("Android"))
+            return false;//他的wifi有包含Android ，表示已經有人連其他人了
+        else
+            return true;
+    }
+    //檢查該device的P2P interface是否是空的
+    public String CheckDeviceP2PConnect(int index){
+        if(second_round_Controller_record.get(index).getP2PInterface().contains("Android"))
+            return "Cant";//他的P2P有包含Android ，表示已經有人連其他人了
+        else if(second_round_Controller_record.get(index).getP2PInterface().equals("GO"))
+            return "AlreadyGO";//這個裝置已經是GO
+        else
+            return "None";//沒連別人
+    }
+
+    public boolean SrcDestExchange(int SrcDeviceIndex, int DestDeviceIndex){
+        String oldCN="";
+        ControllerData_set tmp;
+        int TempDeviceIndex=0;
+        if(CheckDeviceWifiConnect(SrcDeviceIndex)){//src Wifi是空的
+            if(!CheckDeviceP2PConnect(DestDeviceIndex).equals("Cant")){//dest的p2p不等於Cant，表示dest是GO或是NONE。
+                // src可以用wifi去連dest
+                Log.d("Miga", "before edit: " + second_round_Controller_record.get(SrcDeviceIndex).toString());
+                oldCN = second_round_Controller_record.get(SrcDeviceIndex).getClusterName();//先把現在要連的這個人的舊有的ClusterName存起來
+                // src連線資料更新
+                tmp = new ControllerData_set(second_round_Controller_record.get(SrcDeviceIndex).getSSID(), second_round_Controller_record.get(SrcDeviceIndex).getNeighbor(),
+                        second_round_Controller_record.get(SrcDeviceIndex).getNeighborNum(), second_round_Controller_record.get(SrcDeviceIndex).getPOWER(),
+                        second_round_Controller_record.get(DestDeviceIndex).getClusterName(), second_round_Controller_record.get(DestDeviceIndex).getSSID(), "None");
+                second_round_Controller_record.set(SrcDeviceIndex, tmp);//更新SrcDeviceIndex資料
+                Log.d("Miga", "after edit: " + second_round_Controller_record.get(SrcDeviceIndex).toString());
+                update_Neighbor_data(second_round_Controller_record.get(DestDeviceIndex).getSSID(), "X", "X", "X", "X", "X", "GO");
+                UpdateSameCNNeighbor(oldCN,second_round_Controller_record.get(DestDeviceIndex).getClusterName());//把oldCluster相關的Device的clustername都更新為新的CN
+                return true;
+            }
+        }else{
+            return false;
+        }
+        return false;
     }
 }

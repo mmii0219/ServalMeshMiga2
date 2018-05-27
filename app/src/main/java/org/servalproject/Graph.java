@@ -7,6 +7,8 @@ package org.servalproject;
 // Java program for Kruskal's algorithm to find Minimum
 // Spanning Tree of a given connected, undirected and
 // weighted graph
+import android.util.Log;
+
 import java.util.*;
 import java.lang.*;
 import java.io.*;
@@ -79,8 +81,9 @@ public class Graph {
     }
 
     // The main function to construct MST using Kruskal's algorithm
-    void KruskalMST()
+    String KruskalMST()
     {
+        String resultString="";
         Edge result[] = new Edge[V];  // Tnis will store the resultant MST
         int e = 0;  // An index variable, used for result[]
         int i = 0;  // An index variable, used for sorted edges
@@ -109,14 +112,15 @@ public class Graph {
         // Number of edges to be taken is equal to V-1
         while (e < V - 1)
         {
+            Log.d("Miga","V:"+V+",e: "+e);
             // Step 2: Pick the smallest edge. And increment
             // the index for next iteration
             Edge next_edge = new Edge();
             next_edge = edge[i--];
-
+            Log.d("Miga","i:"+i);
             int x = find(subsets, next_edge.src);
             int y = find(subsets, next_edge.dest);
-
+            Log.d("Miga","x:"+x+"y:"+y);
             // If including this edge does't cause cycle,
             // include it in result and increment the index
             // of result for next edge
@@ -132,9 +136,13 @@ public class Graph {
         // the built MST
         System.out.println("Following are the edges in " +
                 "the constructed MST");
-        for (i = 0; i < e; ++i)
-            System.out.println(result[i].src+" -- " +
-                    result[i].dest+" == " + result[i].weight);
+        for (i = 0; i < e; ++i) {
+            System.out.println(result[i].src + " -- " +
+                    result[i].dest + " == " + result[i].weight);
+            resultString += result[i].src+"@"+result[i].dest+"@"+result[i].weight+"#";
+        }
+        return resultString;
     }
 
 }
+

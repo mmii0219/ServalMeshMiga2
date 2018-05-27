@@ -5850,20 +5850,37 @@ public class Control extends Service {
                 if(CheckDeviceWifiConnect(SrcDeviceIndex)){//src Wifi是空的
                     if(!CheckDeviceP2PConnect(DestDeviceIndex).equals("Cant")){//dest的p2p不等於Cant，表示dest是GO或是NONE。
                         // src可以用wifi去連dest
-                        Log.d("Miga", "before edit: " + second_round_Controller_record.get(SrcDeviceIndex).toString());
-                        oldCN = second_round_Controller_record.get(SrcDeviceIndex).getClusterName();//先把現在要連的這個人的舊有的ClusterName存起來
-                        // src連線資料更新
-                        tmp = new ControllerData_set(second_round_Controller_record.get(SrcDeviceIndex).getSSID(), second_round_Controller_record.get(SrcDeviceIndex).getNeighbor(),
-                                second_round_Controller_record.get(SrcDeviceIndex).getNeighborNum(), second_round_Controller_record.get(SrcDeviceIndex).getPOWER(),
-                                second_round_Controller_record.get(DestDeviceIndex).getClusterName(), second_round_Controller_record.get(DestDeviceIndex).getSSID(), "None");
-                        second_round_Controller_record.set(SrcDeviceIndex, tmp);//更新SrcDeviceIndex資料
-                        Log.d("Miga", "after edit: " + second_round_Controller_record.get(SrcDeviceIndex).toString());
-                        update_Neighbor_data(second_round_Controller_record.get(DestDeviceIndex).getSSID(), "X", "X", "X", "X", "X", "GO");
-                        UpdateSameCNNeighbor(oldCN,second_round_Controller_record.get(DestDeviceIndex).getClusterName());//把oldCluster相關的Device的clustername都更新為新的CN
-                        return;
+                        if(SrcDestWifiConnect(SrcDeviceIndex,DestDeviceIndex)){
+                            continue;//Src成功用wifi連上Dest的p2p，回到for迴圈去處理下一個edge
+                        }
                     }
-                }else{//src wifi不是空的，因此src和dest互換。（目前連線主要都是以wifi連出去為主，若是兩個device的wifi都滿了，才去考慮P2P）
-                    SrcDestExchange(DestDeviceIndex,SrcDeviceIndex);
+                }else if(!CheckDeviceWifiConnect(SrcDeviceIndex)){//src wifi不是空的，因此換檢查dest的wifi。（目前連線主要都是以wifi連出去為主，若是兩個device的wifi都滿了，才去考慮P2P）
+                    if(CheckDeviceWifiConnect(DestDeviceIndex)){//dest Wifi是空的
+                        if(!CheckDeviceP2PConnect(SrcDeviceIndex).equals("Cant")){//srct的p2p不等於Cant，表示src是GO或是NONE。
+                            // dest可以用wifi去連src
+                            if(SrcDestWifiConnect(DestDeviceIndex,SrcDeviceIndex)){
+                                continue;//Dest成功用wifi連上Srct的p2p，回到for迴圈去處理下一個edge
+                            }
+                        }
+                    }
+                }else if(!CheckDeviceWifiConnect(SrcDeviceIndex)&&!CheckDeviceWifiConnect(DestDeviceIndex)){//src, dest的wifi都不是空的，因此要進行p2p的判斷
+                    //先檢查src的p2p
+                    if(CheckDeviceP2PConnect(SrcDeviceIndex).equals("None")){//src的p2p =None，表示p2p是空的，可以去連人
+                        if(CheckDeviceP2PConnect(DestDeviceIndex).equals("None")||CheckDeviceP2PConnect(DestDeviceIndex).equals("GO")){//Dest的p2p是空的或是GO，則表示可以被連
+                            if(SrcDestP2PConnect(SrcDeviceIndex,DestDeviceIndex)){
+                                continue;//src成功用p2p連上dest的p2p
+                            }
+                        }
+                    }else if(CheckDeviceP2PConnect(DestDeviceIndex).equals("None")){//dest的p2p =None，表示p2p是空的，可以去連人
+                        if(CheckDeviceP2PConnect(SrcDeviceIndex).equals("None")||CheckDeviceP2PConnect(SrcDeviceIndex).equals("GO")){//Src的p2p是空的或是GO，則表示可以被連
+                            if(SrcDestP2PConnect(DestDeviceIndex,SrcDeviceIndex)){
+                                continue;//dest成功用p2p連上src的p2p
+                            }
+                        }
+                    }
+                }else{
+                    //往回推改變已經分配好的的code
+                    //先移除wifi連線
                 }
 
             }else{
@@ -5899,28 +5916,47 @@ public class Control extends Service {
             return "None";//沒連別人
     }
 
-    public boolean SrcDestExchange(int SrcDeviceIndex, int DestDeviceIndex){
+    /*
+         *  SrcDestWifiConnect和SrcDestP2PConnect都是前面的參數(SrcDeviceIndex)
+         *  去用Wifi或是P2P去連上後面的參數(DestDeviceIndex)，因此若要進行連線時
+         *  請先確保丟入的參數是正確的。
+         *
+         */
+    public boolean SrcDestWifiConnect(int SrcDeviceIndex, int DestDeviceIndex){
         String oldCN="";
         ControllerData_set tmp;
         int TempDeviceIndex=0;
-        if(CheckDeviceWifiConnect(SrcDeviceIndex)){//src Wifi是空的
-            if(!CheckDeviceP2PConnect(DestDeviceIndex).equals("Cant")){//dest的p2p不等於Cant，表示dest是GO或是NONE。
-                // src可以用wifi去連dest
-                Log.d("Miga", "before edit: " + second_round_Controller_record.get(SrcDeviceIndex).toString());
-                oldCN = second_round_Controller_record.get(SrcDeviceIndex).getClusterName();//先把現在要連的這個人的舊有的ClusterName存起來
-                // src連線資料更新
-                tmp = new ControllerData_set(second_round_Controller_record.get(SrcDeviceIndex).getSSID(), second_round_Controller_record.get(SrcDeviceIndex).getNeighbor(),
-                        second_round_Controller_record.get(SrcDeviceIndex).getNeighborNum(), second_round_Controller_record.get(SrcDeviceIndex).getPOWER(),
-                        second_round_Controller_record.get(DestDeviceIndex).getClusterName(), second_round_Controller_record.get(DestDeviceIndex).getSSID(), "None");
-                second_round_Controller_record.set(SrcDeviceIndex, tmp);//更新SrcDeviceIndex資料
-                Log.d("Miga", "after edit: " + second_round_Controller_record.get(SrcDeviceIndex).toString());
-                update_Neighbor_data(second_round_Controller_record.get(DestDeviceIndex).getSSID(), "X", "X", "X", "X", "X", "GO");
-                UpdateSameCNNeighbor(oldCN,second_round_Controller_record.get(DestDeviceIndex).getClusterName());//把oldCluster相關的Device的clustername都更新為新的CN
-                return true;
-            }
-        }else{
-            return false;
-        }
-        return false;
+
+        Log.d("Miga", "before edit: " + second_round_Controller_record.get(SrcDeviceIndex).toString());
+        oldCN = second_round_Controller_record.get(SrcDeviceIndex).getClusterName();//先把現在要連的這個人的舊有的ClusterName存起來
+        // src連線資料更新
+        tmp = new ControllerData_set(second_round_Controller_record.get(SrcDeviceIndex).getSSID(), second_round_Controller_record.get(SrcDeviceIndex).getNeighbor(),
+                second_round_Controller_record.get(SrcDeviceIndex).getNeighborNum(), second_round_Controller_record.get(SrcDeviceIndex).getPOWER(),
+                second_round_Controller_record.get(DestDeviceIndex).getClusterName(), second_round_Controller_record.get(DestDeviceIndex).getSSID(), second_round_Controller_record.get(SrcDeviceIndex).getP2PInterface());
+        second_round_Controller_record.set(SrcDeviceIndex, tmp);//更新SrcDeviceIndex資料
+        Log.d("Miga", "after edit: " + second_round_Controller_record.get(SrcDeviceIndex).toString());
+        update_Neighbor_data(second_round_Controller_record.get(DestDeviceIndex).getSSID(), "X", "X", "X", "X", "X", "GO");
+        UpdateSameCNNeighbor(oldCN,second_round_Controller_record.get(DestDeviceIndex).getClusterName());//把oldCluster相關的Device的clustername都更新為新的CN
+        return true;
+
+    }
+
+    public boolean SrcDestP2PConnect(int SrcDeviceIndex, int DestDeviceIndex){
+        String oldCN="";
+        ControllerData_set tmp;
+        int TempDeviceIndex=0;
+
+        Log.d("Miga", "before edit: " + second_round_Controller_record.get(SrcDeviceIndex).toString());
+        oldCN = second_round_Controller_record.get(SrcDeviceIndex).getClusterName();//先把現在要連的這個人的舊有的ClusterName存起來
+        // src連線資料更新
+        tmp = new ControllerData_set(second_round_Controller_record.get(SrcDeviceIndex).getSSID(), second_round_Controller_record.get(SrcDeviceIndex).getNeighbor(),
+                second_round_Controller_record.get(SrcDeviceIndex).getNeighborNum(), second_round_Controller_record.get(SrcDeviceIndex).getPOWER(),
+                second_round_Controller_record.get(DestDeviceIndex).getClusterName(), second_round_Controller_record.get(SrcDeviceIndex).getWiFiInterface(), second_round_Controller_record.get(DestDeviceIndex).getSSID());
+        second_round_Controller_record.set(SrcDeviceIndex, tmp);//更新SrcDeviceIndex資料
+        Log.d("Miga", "after edit: " + second_round_Controller_record.get(SrcDeviceIndex).toString());
+        update_Neighbor_data(second_round_Controller_record.get(DestDeviceIndex).getSSID(), "X", "X", "X", "X", "X", "GO");
+        UpdateSameCNNeighbor(oldCN,second_round_Controller_record.get(DestDeviceIndex).getClusterName());//把oldCluster相關的Device的clustername都更新為新的CN
+        return true;
+
     }
 }

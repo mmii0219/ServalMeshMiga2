@@ -306,6 +306,11 @@ public class Control extends Service {
     private Thread t_New_Connection_Func = null;
     private int DifferentCNnum = 0;//不同CN的數量
     private String MSTResult="";//做完MST之後的結果
+    static public long starttimer = 0;//Controller實驗的timer
+    public long endtimmer =0;
+    static public boolean enabletimer = false;//Controller實驗的timer
+    boolean isSavestarttime=false;
+    boolean isSaveendtime=false;
 
     //For Controller Start
     private List<CandidateController_set> CandController_record;
@@ -2749,29 +2754,30 @@ public class Control extends Service {
                     }
                     if(RecvMsg_pc!="") {
                         temp = RecvMsg_pc.split("#");//將message之中有#則分開存到tmep陣列裡;message = WiFiApName + "#" + Cluster_Name + "#" + "5"+ "#" +ROLE;
-                        if (temp[0] != null && temp[1] != null && temp[2] != null && WiFiApName != null) {
-                            if (Newcompare(temp[0], WiFiApName) != 0) {//接收到的data和此裝置的SSID不同; 若A>B則reutrn 1
-                                InetAddress P2PIPAddress = receivedpkt_pc.getAddress();
-                                recv_ip = P2PIPAddress.toString().split("/")[1];//接收傳這個pkt的ip
-                                if(!isreceiveformbridge) {//還沒從bridge接收到ip
-                                    if (temp.length == 4) {//表示有temp3
-                                        //接收到的info事由BRIDGE傳來的，則將此ip存到自己的IPTable
-                                        if (Integer.valueOf(temp[3]) == RoleFlag.BRIDGE.getIndex()) {
-                                            //InetAddress P2PIPAddress = receivedpkt_pc.getAddress();
-                                            String bridgeip = P2PIPAddress.toString().split("/")[1];//接收BRIDGE的IP
-                                            //Log.d("Miga", "Receive ip form BRIDGE: " + bridgeip);
-                                            //s_status = "Receive ip form BRIDGE: " + bridgeip;
-                                            if (!IPTable.containsKey(bridgeip)) {
-                                                IPTable.put(bridgeip, 0);
-                                                Log.d("Miga", "IPTable: " + IPTable);
-                                                s_status = "IPTable: " + IPTable;
-                                                isreceiveformbridge=true;//已經從bridge那邊接收過了，因此不需要再存ip了
+                        if(temp.length>1) {
+                            if (temp[0] != null && temp[1] != null && temp[2] != null && WiFiApName != null) {
+                                if (Newcompare(temp[0], WiFiApName) != 0) {//接收到的data和此裝置的SSID不同; 若A>B則reutrn 1
+                                    InetAddress P2PIPAddress = receivedpkt_pc.getAddress();
+                                    recv_ip = P2PIPAddress.toString().split("/")[1];//接收傳這個pkt的ip
+                                    if (!isreceiveformbridge) {//還沒從bridge接收到ip
+                                        if (temp.length == 4) {//表示有temp3
+                                            //接收到的info事由BRIDGE傳來的，則將此ip存到自己的IPTable
+                                            if (Integer.valueOf(temp[3]) == RoleFlag.BRIDGE.getIndex()) {
+                                                //InetAddress P2PIPAddress = receivedpkt_pc.getAddress();
+                                                String bridgeip = P2PIPAddress.toString().split("/")[1];//接收BRIDGE的IP
+                                                //Log.d("Miga", "Receive ip form BRIDGE: " + bridgeip);
+                                                //s_status = "Receive ip form BRIDGE: " + bridgeip;
+                                                if (!IPTable.containsKey(bridgeip)) {
+                                                    IPTable.put(bridgeip, 0);
+                                                    Log.d("Miga", "IPTable: " + IPTable);
+                                                    s_status = "IPTable: " + IPTable;
+                                                    isreceiveformbridge = true;//已經從bridge那邊接收過了，因此不需要再存ip了
+                                                }
                                             }
                                         }
                                     }
-                                }
-                                //Log.d("Miga", "I got message from: " + RecvMsg_pc);
-                                //s_status = "I got message from unicast" + RecvMsg_pc;
+                                    //Log.d("Miga", "I got message from: " + RecvMsg_pc);
+                                    //s_status = "I got message from unicast" + RecvMsg_pc;
                                 /*寫在這裡可能會讓GOip不准,可能抓到的是後面才傳來的pkt
                                 //讓CLIENT更新GO_SSID
                                 if(!GO_SSID_update) {
@@ -2788,120 +2794,121 @@ public class Control extends Service {
                                         }
                                     }
                                 }*/
-                                // TTL -1
-                                try {
-                                    if(Integer.valueOf(temp[2].trim())>0) {
-                                        temp[2] = String.valueOf(Integer.valueOf(temp[2].trim()) - 1).trim();//經過一個router因此-1
-                                    }
-                                    //Log.d("Miga","Temp[2]:"+temp[2]);
-                                }catch (Exception e){
-                                    e.printStackTrace();
-                                    Log.d("Miga", "Receive_peer_count Exception : at temp[2] _" + e.toString());
-                                    s_status="Receive_peer_count Exception : at temp[2] _" + e.toString();
-                                }
-                                // update peer table
-                                //if (Newcompare(temp[1], Cluster_Name) == 0) {//相同Cluster_Name
-                                if(!PeerTable.containsKey(temp[0])) {
-                                    PeerTable.put(temp[0], 20);//填入收到data的SSID(WiFiApName)
-                                    if (count_peer() + 1 != pre_peer_count) {
-                                        pre_peer_count = count_peer() + 1;//更新現在PeerTable內有幾個Peer
-                                        s_status = "peer_count time : " + Double.toString(((Calendar.getInstance().getTimeInMillis() - start_time) / 1000.0))
-                                                + " Round_Num :" + NumRound + " peer count : " + (count_peer() + 1) + " PeerTable:" + PeerTable;
-                                        Log.d("Miga", "peer_count time : " + Double.toString(((Calendar.getInstance().getTimeInMillis() - start_time) / 1000.0)) + " stay_time : " + Double.toString((sleep_time / 1000.0))
-                                                + " Round_Num :" + NumRound + " peer count : " + (count_peer() + 1) + " PeerTable:" + PeerTable);
-                                    }
-
-                                    InetAddress WiFiIPAddress = receivedpkt_pc.getAddress();
-                                    String clientip = WiFiIPAddress.toString().split("/")[1];//接收CLIENT的IP
-                                    if(!clientip.equals("192.168.49.1")) {//不是GO(GO的不存在CLINET內)
-                                        if (!IPTable.containsKey(clientip)) {//避免client在sendWiFiIPAddress沒有成功傳來，因此直接在這邊做IPTable的儲存->SendWiFiIPAddress和Collect_IPServer之後可以拿掉了
-                                            IPTable.put(clientip, 0);
-                                            Log.d("Miga", "Receive_peer_count/IPTable:" + IPTable);
-                                            s_status = "Receive_peer_count/IPTable:" + IPTable;
+                                    // TTL -1
+                                    try {
+                                        if (Integer.valueOf(temp[2].trim()) > 0) {
+                                            temp[2] = String.valueOf(Integer.valueOf(temp[2].trim()) - 1).trim();//經過一個router因此-1
                                         }
+                                        //Log.d("Miga","Temp[2]:"+temp[2]);
+                                    } catch (Exception e) {
+                                        e.printStackTrace();
+                                        Log.d("Miga", "Receive_peer_count Exception : at temp[2] _" + e.toString());
+                                        s_status = "Receive_peer_count Exception : at temp[2] _" + e.toString();
                                     }
-                                }
-                                //Log.v("Miga", "PeerTable:" + PeerTable);
-                                //s_status = "PeerTable:" + PeerTable;
-                                //}
+                                    // update peer table
+                                    //if (Newcompare(temp[1], Cluster_Name) == 0) {//相同Cluster_Name
+                                    if (!PeerTable.containsKey(temp[0])) {
+                                        PeerTable.put(temp[0], 20);//填入收到data的SSID(WiFiApName)
+                                        if (count_peer() + 1 != pre_peer_count) {
+                                            pre_peer_count = count_peer() + 1;//更新現在PeerTable內有幾個Peer
+                                            s_status = "peer_count time : " + Double.toString(((Calendar.getInstance().getTimeInMillis() - start_time) / 1000.0))
+                                                    + " Round_Num :" + NumRound + " peer count : " + (count_peer() + 1) + " PeerTable:" + PeerTable;
+                                            Log.d("Miga", "peer_count time : " + Double.toString(((Calendar.getInstance().getTimeInMillis() - start_time) / 1000.0)) + " stay_time : " + Double.toString((sleep_time / 1000.0))
+                                                    + " Round_Num :" + NumRound + " peer count : " + (count_peer() + 1) + " PeerTable:" + PeerTable);
+                                        }
 
-                                try {
-                                    // relay packet
-                                    if (Integer.valueOf(temp[2].trim()) > 0) {
-                                        message = temp[0] + "#" + temp[1] + "#" + temp[2].trim();
-                                        sendds = null;
-                                        sendds = new DatagramSocket();
-                                        try {
-                                            //避免RELAY回原本傳回去的那個device
-                                            //InetAddress WiFiIPAddress = receivedpkt_pc.getAddress();
-                                            //String clientip = WiFiIPAddress.toString().split("/")[1];//接收CLIENT的IP
-                                            //Log.d("Miga", "clientip: " + clientip);
-                                            //s_status = "State : clientip: " +clientip;
-                                            // unicast
-                                            iterator = IPTable.keySet().iterator();
-                                            while (iterator.hasNext()) {
-                                                tempkey = iterator.next().toString();
-                                                if(!recv_ip.equals(tempkey)) {
-                                                    senddp = new DatagramPacket(message.getBytes(), message.length(),
-                                                            InetAddress.getByName(tempkey), IP_port_for_peer_counting);
-                                                    sendds.send(senddp);
-                                                    //Log.d("Miga", "(Relay)Send the message: " + message + " to " + tempkey);
-                                                    //s_status = "State : (Relay)Send the message: " + message + " to " + tempkey;
-                                                }
+                                        InetAddress WiFiIPAddress = receivedpkt_pc.getAddress();
+                                        String clientip = WiFiIPAddress.toString().split("/")[1];//接收CLIENT的IP
+                                        if (!clientip.equals("192.168.49.1")) {//不是GO(GO的不存在CLINET內)
+                                            if (!IPTable.containsKey(clientip)) {//避免client在sendWiFiIPAddress沒有成功傳來，因此直接在這邊做IPTable的儲存->SendWiFiIPAddress和Collect_IPServer之後可以拿掉了
+                                                IPTable.put(clientip, 0);
+                                                Log.d("Miga", "Receive_peer_count/IPTable:" + IPTable);
+                                                s_status = "Receive_peer_count/IPTable:" + IPTable;
                                             }
-                                            //for BRIDGE
-                                            senddp = new DatagramPacket(message.getBytes(), message.length(),
-                                                    InetAddress.getByName("192.168.49.1"), IP_port_for_peer_counting);
-                                            sendds.send(senddp);
-                                            //if(sendds!=null)
-                                            //sendds.close();
-                                            //sendds.setRequestProperty("Connection","Close");
-                                        } catch (Exception e) {
-                                            e.printStackTrace();
-                                            Log.d("Miga", "Receive_peer_count Exception : at relay pkt (unicast) _" + e.toString());
-                                            s_status = "Receive_peer_count Exception : at relay pkt (unicast) _" + e.toString();
                                         }
-                                        try {
-                                            if (ROLE == RoleFlag.HYBRID.getIndex()|| ROLE == RoleFlag.BRIDGE.getIndex()) {
-                                                if (ROLE == RoleFlag.HYBRID.getIndex()) {//20180501 新增HYBRID轉傳給CLIENT的，測試可成功
-                                                    // broadcast
-                                                    senddp = new DatagramPacket(message.getBytes(), message.length(),
-                                                            InetAddress.getByName("192.168.49.255"), IP_port_for_peer_counting);
-                                                    sendds.send(senddp);
-                                                }
-                                                //multicast
-                                                if (mConnectivityManager != null) {
-                                                    mNetworkInfo = mConnectivityManager.getNetworkInfo(ConnectivityManager.TYPE_WIFI);
-                                                    if (mNetworkInfo.isConnected()) {
-                                                        multicgroup = InetAddress.getByName("224.0.0.3");//指定multicast要發送的group
-                                                        multicsk = null;// 20180520 關socket
-                                                        multicsk = new MulticastSocket(6790);//6790: for peertable update
-                                                        msgPkt = new DatagramPacket(message.getBytes(), message.length(), multicgroup, 6790);
-                                                        multicsk.send(msgPkt);
-                                                        if(multicsk!=null)
-                                                            multicsk.close();
-                                                        //Log.v("Miga", "multicsk send message:" + message);
-                                                        //s_status = "multicsk send message" + message;
+                                    }
+                                    //Log.v("Miga", "PeerTable:" + PeerTable);
+                                    //s_status = "PeerTable:" + PeerTable;
+                                    //}
+
+                                    try {
+                                        // relay packet
+                                        if (Integer.valueOf(temp[2].trim()) > 0) {
+                                            message = temp[0] + "#" + temp[1] + "#" + temp[2].trim();
+                                            sendds = null;
+                                            sendds = new DatagramSocket();
+                                            try {
+                                                //避免RELAY回原本傳回去的那個device
+                                                //InetAddress WiFiIPAddress = receivedpkt_pc.getAddress();
+                                                //String clientip = WiFiIPAddress.toString().split("/")[1];//接收CLIENT的IP
+                                                //Log.d("Miga", "clientip: " + clientip);
+                                                //s_status = "State : clientip: " +clientip;
+                                                // unicast
+                                                iterator = IPTable.keySet().iterator();
+                                                while (iterator.hasNext()) {
+                                                    tempkey = iterator.next().toString();
+                                                    if (!recv_ip.equals(tempkey)) {
+                                                        senddp = new DatagramPacket(message.getBytes(), message.length(),
+                                                                InetAddress.getByName(tempkey), IP_port_for_peer_counting);
+                                                        sendds.send(senddp);
+                                                        //Log.d("Miga", "(Relay)Send the message: " + message + " to " + tempkey);
+                                                        //s_status = "State : (Relay)Send the message: " + message + " to " + tempkey;
                                                     }
                                                 }
+                                                //for BRIDGE
+                                                senddp = new DatagramPacket(message.getBytes(), message.length(),
+                                                        InetAddress.getByName("192.168.49.1"), IP_port_for_peer_counting);
+                                                sendds.send(senddp);
+                                                //if(sendds!=null)
+                                                //sendds.close();
+                                                //sendds.setRequestProperty("Connection","Close");
+                                            } catch (Exception e) {
+                                                e.printStackTrace();
+                                                Log.d("Miga", "Receive_peer_count Exception : at relay pkt (unicast) _" + e.toString());
+                                                s_status = "Receive_peer_count Exception : at relay pkt (unicast) _" + e.toString();
                                             }
-                                        } catch (Exception e) {
-                                            e.printStackTrace();
-                                            Log.d("Miga", "Receive_peer_count Exception : at relay pkt (multicast) _" + e.toString());
-                                            s_status = "Receive_peer_count Exception : at relay pkt (multicast) _" + e.toString();
+                                            try {
+                                                if (ROLE == RoleFlag.HYBRID.getIndex() || ROLE == RoleFlag.BRIDGE.getIndex()) {
+                                                    if (ROLE == RoleFlag.HYBRID.getIndex()) {//20180501 新增HYBRID轉傳給CLIENT的，測試可成功
+                                                        // broadcast
+                                                        senddp = new DatagramPacket(message.getBytes(), message.length(),
+                                                                InetAddress.getByName("192.168.49.255"), IP_port_for_peer_counting);
+                                                        sendds.send(senddp);
+                                                    }
+                                                    //multicast
+                                                    if (mConnectivityManager != null) {
+                                                        mNetworkInfo = mConnectivityManager.getNetworkInfo(ConnectivityManager.TYPE_WIFI);
+                                                        if (mNetworkInfo.isConnected()) {
+                                                            multicgroup = InetAddress.getByName("224.0.0.3");//指定multicast要發送的group
+                                                            multicsk = null;// 20180520 關socket
+                                                            multicsk = new MulticastSocket(6790);//6790: for peertable update
+                                                            msgPkt = new DatagramPacket(message.getBytes(), message.length(), multicgroup, 6790);
+                                                            multicsk.send(msgPkt);
+                                                            if (multicsk != null)
+                                                                multicsk.close();
+                                                            //Log.v("Miga", "multicsk send message:" + message);
+                                                            //s_status = "multicsk send message" + message;
+                                                        }
+                                                    }
+                                                }
+                                            } catch (Exception e) {
+                                                e.printStackTrace();
+                                                Log.d("Miga", "Receive_peer_count Exception : at relay pkt (multicast) _" + e.toString());
+                                                s_status = "Receive_peer_count Exception : at relay pkt (multicast) _" + e.toString();
+                                            }
                                         }
-                                    }
-                                    if(multicsk!=null)
-                                        multicsk.close();
-                                    //if(sendds!=null)
+                                        if (multicsk != null)
+                                            multicsk.close();
+                                        //if(sendds!=null)
                                         sendds.close();// 20180520 關socket
-                                }catch (Exception e){
-                                    e.printStackTrace();
-                                    Log.d("Miga", "Receive_peer_count Exception : // relay packet _" + e.toString());
-                                    s_status = "Receive_peer_count Exception : // relay packet _" + e.toString();
+                                    } catch (Exception e) {
+                                        e.printStackTrace();
+                                        Log.d("Miga", "Receive_peer_count Exception : // relay packet _" + e.toString());
+                                        s_status = "Receive_peer_count Exception : // relay packet _" + e.toString();
+                                    }
                                 }
-                            }
-                        }
+                            }//End if
+                        }//if >1
 
                     }
                 }
@@ -3253,22 +3260,23 @@ public class Control extends Service {
                             }
                         }
                         if(notnull){
-                            if (Newcompare(temp[0], WiFiApName) != 0) {//接收到的不是自己的
-
-                                if(!IsInitial){//手動設定的device還沒進CN更新,加入這個主要是讓非手動的device近來更新-> 20180410應該是讓手動的device近來更新
-                                    if (ROLE == RoleFlag.CLIENT.getIndex()) {
-                                        if (Integer.valueOf(temp[2]) == RoleFlag.GO.getIndex()) {//接收到的是GO傳來的
-                                            if (!IsReceiveGoInfo) {//且還沒接收過GO的Info
-                                                Cluster_Name = temp[1];
-                                                IsReceiveGoInfo = true;//已接收過GO的
+                            if(m_length>1) {
+                                if (Newcompare(temp[0], WiFiApName) != 0) {//接收到的不是自己的
+                                    if (!IsInitial) {//手動設定的device還沒進CN更新,加入這個主要是讓非手動的device近來更新-> 20180410應該是讓手動的device近來更新
+                                        if (ROLE == RoleFlag.CLIENT.getIndex()) {
+                                            if (Integer.valueOf(temp[2]) == RoleFlag.GO.getIndex()) {//接收到的是GO傳來的
+                                                if (!IsReceiveGoInfo) {//且還沒接收過GO的Info
+                                                    Cluster_Name = temp[1];
+                                                    IsReceiveGoInfo = true;//已接收過GO的
+                                                }
                                             }
                                         }
-                                    }
-                                }//還需要再寫一個自動的device更新CN
-                                else{
-                                    if (Integer.valueOf(temp[2]) == RoleFlag.HYBRID.getIndex() || Integer.valueOf(temp[2]) == RoleFlag.BRIDGE.getIndex()) {//接收到的是HY,BR傳來的
-                                        if (!Cluster_Name.equals(temp[1])) {//傳送過來的CN不相同
-                                            Cluster_Name = temp[1];
+                                    }//還需要再寫一個自動的device更新CN
+                                    else {
+                                        if (Integer.valueOf(temp[2]) == RoleFlag.HYBRID.getIndex() || Integer.valueOf(temp[2]) == RoleFlag.BRIDGE.getIndex()) {//接收到的是HY,BR傳來的
+                                            if (!Cluster_Name.equals(temp[1])) {//傳送過來的CN不相同
+                                                Cluster_Name = temp[1];
+                                            }
                                         }
                                     }
                                 }
@@ -3547,6 +3555,25 @@ public class Control extends Service {
         @Override
         public void onReceive(Context ctxt, Intent intent) {
             int level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, 0);
+            if(level==31) {
+                if(!isSavestarttime) {
+                    starttimer = System.nanoTime();
+                    s_status = "31 : " + starttimer;
+                    Log.d("Miga", "31 : " + starttimer);
+                    isSavestarttime = true;
+                }
+            }
+            else if (level==30) {
+                if(!isSaveendtime) {
+                    endtimmer = System.nanoTime();
+                    long durationtime = endtimmer - starttimer;
+                    s_status = "from 31 to 30: " + durationtime / 1000000000 + " sec";
+                    Log.d("Miga", "from 31 to 30: " + durationtime / 1000000000 + " sec");
+                    isSaveendtime = true;
+                }
+            }
+
+
             power_level = (int)(level*getBatteryCapacity()/100);//20180327 power改用比較剩餘電容量
         }
     };

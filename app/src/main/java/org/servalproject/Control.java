@@ -3502,7 +3502,7 @@ public class Control extends Service {
         Final_Controller_record = new ArrayList<ControllerData_set>();
         getBatteryCapacity();
         callAsynchronousTask();//Wang 20180427
-        MST(); //For Controller second test 20180525
+        //MST(); //For Controller second test 20180525
 
 
     }
@@ -4195,8 +4195,8 @@ public class Control extends Service {
                             GetNeighborCN(tempNeighbor[0]), tempNeighbor[0], "None");
                     first_round_Controller_record.set(i, tmp);
                     //Log.d("Miga", "before edit: " + first_round_Controller_record.get(i).toString());
-                    update_Neighbor_data(tempNeighbor[0], "X", "X", "X", "X", "X", "GO");
-                    UpdateSameCNNeighbor(oldCN,GetNeighborCN(ConnectNeighbor));//把oldCluster相關的Device的clustername都更新為新的CN
+                    update_Neighbor_data("first", tempNeighbor[0], "X", "X", "X", "X", "X", "GO");
+                    UpdateSameCNNeighbor("first", oldCN,GetNeighborCN(ConnectNeighbor));//把oldCluster相關的Device的clustername都更新為新的CN
                 }
             }else{//鄰居有兩個以上
                 for( int j =0; j< tempNeighbor.length; j++){//j是鄰居，鄰居數量若只有一個的話就是length==1
@@ -4242,8 +4242,8 @@ public class Control extends Service {
                     first_round_Controller_record.set(i, tmp);
                     //Log.d("Miga", "before edit: " + first_round_Controller_record.get(i).toString());
                     //更新鄰居的info
-                    update_Neighbor_data(ConnectNeighbor, "X", "X", "X", "X", "X", "GO");
-                    UpdateSameCNNeighbor(oldCN,GetNeighborCN(ConnectNeighbor));//把oldCluster相關的Device的clustername都更新為新的CN
+                    update_Neighbor_data("first", ConnectNeighbor, "X", "X", "X", "X", "X", "GO");
+                    UpdateSameCNNeighbor("first", oldCN,GetNeighborCN(ConnectNeighbor));//把oldCluster相關的Device的clustername都更新為新的CN
 
                 }
             }
@@ -4298,29 +4298,66 @@ public class Control extends Service {
         }
         else
             Log.d("Miga","There are many cluster need to combine ...");
-
+            MST(); //For Controller second test 20180525
+            //把第二階段整理完後的資料丟到最後階段
+            Final_Controller_record.clear();//清除前面的，避免重複儲存
+            for(int i = 0 ; i < second_round_Controller_record.size(); i++) {
+                Final_Controller_record.add(second_round_Controller_record.get(i));
+            }
+            Log.d("Miga", "After MST, it only one cluster!");
+            IsSecondRoundOver = true;//可以開始進行新的資訊傳送
+            //開啟只有Controller才可以使用的thread，是用來讓controller最後傳送新的連線info用
+            if (t_Send_info_new_connect == null) {
+                t_Send_info_new_connect = new Send_info_new_connect();
+                t_Send_info_new_connect.start();
+            }
         //Each_Cluster_name = null;
     }
     //每個裝置做完一次改變後，也要去更新neighbor的
-    public void update_Neighbor_data(String SSID,String Neighbor,String NeighborNum,String POWER,String ClusterName,String WiFiInterface,String P2PInterface){
+    public void update_Neighbor_data(String WhichRound, String SSID,String Neighbor,String NeighborNum,String POWER,String ClusterName,String WiFiInterface,String P2PInterface){
+
+
+
         ControllerData_set tmp;
-        for( int i =0; i<first_round_Controller_record.size();i++){
-            if(SSID.equals(first_round_Controller_record.get(i).getSSID())){
-                //抓出要更新的
-                //只有一個鄰居，直接連他
-                //Log.d("Miga","update_Neighbor_data/before edit: "+first_round_Controller_record.get(i).toString());
-                //傳入的值若是"X"，則表示不做更新
-                tmp = new ControllerData_set((SSID.equals("X"))?first_round_Controller_record.get(i).getSSID():SSID,
-                        (Neighbor.equals("X"))?first_round_Controller_record.get(i).getNeighbor():Neighbor,
-                        (NeighborNum.equals("X"))?first_round_Controller_record.get(i).getNeighborNum():NeighborNum,
-                        (POWER.equals("X"))?first_round_Controller_record.get(i).getPOWER():POWER,
-                        (ClusterName.equals("X"))?first_round_Controller_record.get(i).getClusterName():ClusterName,
-                        (WiFiInterface.equals("X"))?first_round_Controller_record.get(i).getWiFiInterface():WiFiInterface,
-                        (P2PInterface.equals("X"))?first_round_Controller_record.get(i).getP2PInterface():P2PInterface
-                );
-                first_round_Controller_record.set(i,tmp);
-                //Log.d("Miga","update_Neighbor_data/before edit: "+first_round_Controller_record.get(i).toString());
-                break;
+        if(WhichRound.equals("first")) {
+            for (int i = 0; i < first_round_Controller_record.size(); i++) {
+                if (SSID.equals(first_round_Controller_record.get(i).getSSID())) {
+                    //抓出要更新的
+                    //只有一個鄰居，直接連他
+                    //Log.d("Miga","update_Neighbor_data/before edit: "+first_round_Controller_record.get(i).toString());
+                    //傳入的值若是"X"，則表示不做更新
+                    tmp = new ControllerData_set((SSID.equals("X")) ? first_round_Controller_record.get(i).getSSID() : SSID,
+                            (Neighbor.equals("X")) ? first_round_Controller_record.get(i).getNeighbor() : Neighbor,
+                            (NeighborNum.equals("X")) ? first_round_Controller_record.get(i).getNeighborNum() : NeighborNum,
+                            (POWER.equals("X")) ? first_round_Controller_record.get(i).getPOWER() : POWER,
+                            (ClusterName.equals("X")) ? first_round_Controller_record.get(i).getClusterName() : ClusterName,
+                            (WiFiInterface.equals("X")) ? first_round_Controller_record.get(i).getWiFiInterface() : WiFiInterface,
+                            (P2PInterface.equals("X")) ? first_round_Controller_record.get(i).getP2PInterface() : P2PInterface
+                    );
+                    first_round_Controller_record.set(i, tmp);
+                    //Log.d("Miga","update_Neighbor_data/before edit: "+first_round_Controller_record.get(i).toString());
+                    break;
+                }
+            }
+        }else if(WhichRound.equals("second")){
+            for (int i = 0; i < second_round_Controller_record.size(); i++) {
+                if (SSID.equals(second_round_Controller_record.get(i).getSSID())) {
+                    //抓出要更新的
+                    //只有一個鄰居，直接連他
+                    //Log.d("Miga","update_Neighbor_data/before edit: "+first_round_Controller_record.get(i).toString());
+                    //傳入的值若是"X"，則表示不做更新
+                    tmp = new ControllerData_set((SSID.equals("X")) ? second_round_Controller_record.get(i).getSSID() : SSID,
+                            (Neighbor.equals("X")) ? second_round_Controller_record.get(i).getNeighbor() : Neighbor,
+                            (NeighborNum.equals("X")) ? second_round_Controller_record.get(i).getNeighborNum() : NeighborNum,
+                            (POWER.equals("X")) ? second_round_Controller_record.get(i).getPOWER() : POWER,
+                            (ClusterName.equals("X")) ? second_round_Controller_record.get(i).getClusterName() : ClusterName,
+                            (WiFiInterface.equals("X")) ? second_round_Controller_record.get(i).getWiFiInterface() : WiFiInterface,
+                            (P2PInterface.equals("X")) ? second_round_Controller_record.get(i).getP2PInterface() : P2PInterface
+                    );
+                    second_round_Controller_record.set(i, tmp);
+                    //Log.d("Miga","update_Neighbor_data/before edit: "+first_round_Controller_record.get(i).toString());
+                    break;
+                }
             }
         }
     }
@@ -4356,10 +4393,18 @@ public class Control extends Service {
         return false;
     }
     //連上其他人之後，更新舊有的相同CN內其他member的CN
-    public void UpdateSameCNNeighbor(String OldCN,String NewCN){
-        for ( int i = 0; i< first_round_Controller_record.size(); i++){
-            if(OldCN.equals(first_round_Controller_record.get(i).getClusterName())){
-                update_Neighbor_data(first_round_Controller_record.get(i).getSSID(), "X", "X", "X", NewCN, "X", "X");
+    public void UpdateSameCNNeighbor(String WhichRound, String OldCN,String NewCN){
+        if(WhichRound.equals("first")) {
+            for (int i = 0; i < first_round_Controller_record.size(); i++) {
+                if (OldCN.equals(first_round_Controller_record.get(i).getClusterName())) {
+                    update_Neighbor_data("first", first_round_Controller_record.get(i).getSSID(), "X", "X", "X", NewCN, "X", "X");
+                }
+            }
+        }else if(WhichRound.equals("second")){
+            for (int i = 0; i < second_round_Controller_record.size(); i++) {
+                if (OldCN.equals(second_round_Controller_record.get(i).getClusterName())) {
+                    update_Neighbor_data("second", second_round_Controller_record.get(i).getSSID(), "X", "X", "X", NewCN, "X", "X");
+                }
             }
         }
     }
@@ -4390,9 +4435,9 @@ public class Control extends Service {
                     //Log.d("Miga","Send_info ControllerAuto");
                     if (IsP2Pconnect) {
                         if(IsController){
-                            if(IsControllerOpenFirstRond){
+                            //if(IsControllerOpenFirstRond){
                                 return;//Controller已開啟first round,因此結束這個thread
-                            }
+                            //}
                         }else{
                             if(IsReceiveMyself){
                                 return;//不是Controller，當收到自己新的的info,因此結束這個thread
@@ -4672,6 +4717,7 @@ public class Control extends Service {
                                         senddsk.close();// 20180520 關socket
                                     if (multicsk != null)
                                         multicsk.close();// 20180520 關socket
+                                    Thread.sleep(1500);
                                 }
                             }////End 不是Controller的要幫忙Relay packet
 
@@ -4976,6 +5022,8 @@ public class Control extends Service {
                                         //s_status = "multicsk send message" + message;
                                     }
                                 }
+                                //Log.d("Miga", "Send_info_new_connect pkt:" + message);
+                                //s_status = "Send_info_new_connect pkt:" + message;
                             }else{
                                 MyNewConnectInfo = Final_Controller_record.get(i).toString_Final();//Controller取得自己的
                                 if(send_time == 3) {
@@ -5078,6 +5126,8 @@ public class Control extends Service {
                                 // relay packet
                                 //message = temp[0] + "#" + temp[1] + "#" + temp[2].trim() + "#" + temp[3];
                                 message = RecvMsg_cinfo_nwconnect;
+                                //Log.d("Miga", "Receive_info_new_connect/relay pkt:" + message);
+                                //s_status = "Receive_info_new_connect/relay pkt:" + message;
                                 temp = message.split("#");
                                 if (WiFiApName.equals(temp[0])) {
                                     MyNewConnectInfo = message;//儲存自己的新的連線info
@@ -5747,7 +5797,7 @@ public class Control extends Service {
         *
         * */
         //也加入自己的data
-        ControllerData_set device0 = new ControllerData_set("Android_ea4a", "Android_988f@Android_e9dd@", Integer.toString(2),
+        /*ControllerData_set device0 = new ControllerData_set("Android_ea4a", "Android_988f@Android_e9dd@", Integer.toString(2),
                 String.valueOf(1200), "Android_e9dd", "Android_e9dd", "None");
         second_round_Controller_record.add(device0);
         ControllerData_set device1 = new ControllerData_set("Android_9722", "Android_988f@Android_e9dd@", Integer.toString(2),
@@ -5758,7 +5808,7 @@ public class Control extends Service {
         second_round_Controller_record.add(device2);
         ControllerData_set device3 = new ControllerData_set("Android_e9dd", "Android_ea4a@Android_9722@", Integer.toString(2),
                 String.valueOf(2730), "Android_e9dd", "None", "GO");
-        second_round_Controller_record.add(device3);
+        second_round_Controller_record.add(device3);*/
 
         String [] tempNeighbor;
 
@@ -5935,8 +5985,8 @@ public class Control extends Service {
                 second_round_Controller_record.get(DestDeviceIndex).getClusterName(), second_round_Controller_record.get(DestDeviceIndex).getSSID(), second_round_Controller_record.get(SrcDeviceIndex).getP2PInterface());
         second_round_Controller_record.set(SrcDeviceIndex, tmp);//更新SrcDeviceIndex資料
         Log.d("Miga", "after edit: " + second_round_Controller_record.get(SrcDeviceIndex).toString());
-        update_Neighbor_data(second_round_Controller_record.get(DestDeviceIndex).getSSID(), "X", "X", "X", "X", "X", "GO");
-        UpdateSameCNNeighbor(oldCN,second_round_Controller_record.get(DestDeviceIndex).getClusterName());//把oldCluster相關的Device的clustername都更新為新的CN
+        update_Neighbor_data("second", second_round_Controller_record.get(DestDeviceIndex).getSSID(), "X", "X", "X", "X", "X", "GO");
+        UpdateSameCNNeighbor("second", oldCN,second_round_Controller_record.get(DestDeviceIndex).getClusterName());//把oldCluster相關的Device的clustername都更新為新的CN
         return true;
 
     }
@@ -5954,8 +6004,8 @@ public class Control extends Service {
                 second_round_Controller_record.get(DestDeviceIndex).getClusterName(), second_round_Controller_record.get(SrcDeviceIndex).getWiFiInterface(), second_round_Controller_record.get(DestDeviceIndex).getSSID());
         second_round_Controller_record.set(SrcDeviceIndex, tmp);//更新SrcDeviceIndex資料
         Log.d("Miga", "after edit: " + second_round_Controller_record.get(SrcDeviceIndex).toString());
-        update_Neighbor_data(second_round_Controller_record.get(DestDeviceIndex).getSSID(), "X", "X", "X", "X", "X", "GO");
-        UpdateSameCNNeighbor(oldCN,second_round_Controller_record.get(DestDeviceIndex).getClusterName());//把oldCluster相關的Device的clustername都更新為新的CN
+        update_Neighbor_data("second", second_round_Controller_record.get(DestDeviceIndex).getSSID(), "X", "X", "X", "X", "X", "GO");
+        UpdateSameCNNeighbor("second", oldCN,second_round_Controller_record.get(DestDeviceIndex).getClusterName());//把oldCluster相關的Device的clustername都更新為新的CN
         return true;
 
     }

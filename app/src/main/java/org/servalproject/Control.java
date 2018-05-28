@@ -4094,7 +4094,7 @@ public class Control extends Service {
                         if(RunNewConnectionTime==0)
                             Thread.sleep(45000);//睡10秒，讓裝置之間能夠有充分的時間蒐集同個cluster內的其他裝置的SSID,POWER
                         else
-                            Thread.sleep(90000);//sleep 1 mins
+                            Thread.sleep(6000000);//sleep 100 mins (做實驗用，實驗的話讓他改變一次topology就好，因此下一次的topology讓他再100分鐘後)
                         //進行Controller候選人的排序
                         Collections.sort(CandController_record, new Comparator<CandidateController_set>() {
                             public int compare(CandidateController_set o1, CandidateController_set o2) {
@@ -4592,11 +4592,13 @@ public class Control extends Service {
                                 if(WiFiIPAddress!= null) {
                                     String clientip = WiFiIPAddress.toString().split("/")[1];//接收CLIENT的IP
                                     recv_ip =clientip;
-                                    if (!clientip.equals("192.168.49.1")) {//不是GO(GO的不存在CLINET內)
-                                        if (!IPTable.containsKey(clientip)) {//避免client在sendWiFiIPAddress沒有成功傳來，因此直接在這邊做IPTable的儲存->SendWiFiIPAddress和Collect_IPServer之後可以拿掉了
-                                            IPTable.put(clientip, 0);
-                                            Log.d("Miga", "Receive_info/IPTable:" + IPTable);
-                                            s_status = "Receive_info/IPTable:" + IPTable;
+                                    if(ROLE == RoleFlag.GO.getIndex() || ROLE==RoleFlag.HYBRID.getIndex()) {//只有GO和Hybrid需要去儲存client的ip table
+                                        if (!clientip.equals("192.168.49.1")) {//不是GO(GO的不存在CLINET內)
+                                            if (!IPTable.containsKey(clientip)) {//避免client在sendWiFiIPAddress沒有成功傳來，因此直接在這邊做IPTable的儲存->SendWiFiIPAddress和Collect_IPServer之後可以拿掉了
+                                                IPTable.put(clientip, 0);
+                                                Log.d("Miga", "Receive_info/IPTable:" + IPTable);
+                                                s_status = "Receive_info/IPTable:" + IPTable;
+                                            }
                                         }
                                     }
                                 }
@@ -5261,7 +5263,7 @@ public class Control extends Service {
                             //if (ROLE == RoleFlag.CLIENT.getIndex() || ROLE == RoleFlag.HYBRID.getIndex()|| ROLE == RoleFlag.BRIDGE.getIndex()) {
                             //unicast
                             try {
-                                receivedskt_cinfo_nwconnect.setSoTimeout(20000);
+                                receivedskt_cinfo_nwconnect.setSoTimeout(3000);
                                 receivedskt_cinfo_nwconnect.receive(receivedpkt_cinfo_nwconnect);//把接收到的data存在receivedp.
                             }catch (SocketTimeoutException e) {
                                 Log.d("Miga","Receive_info_uni_new_connect time out");
@@ -5306,7 +5308,7 @@ public class Control extends Service {
                                 //multicast
                                 //recvControllerNewConnectSocket.receive(receivedpkt_cinfo_nwconnect);//recvControllerSocket port:6790
                                 try {
-                                    recvControllerNewConnectSocket.setSoTimeout(20000);
+                                    recvControllerNewConnectSocket.setSoTimeout(3000);
                                     recvControllerNewConnectSocket.receive(receivedpkt_cinfo_nwconnect);//把接收到的data存在receivedp.
                                 }catch (SocketTimeoutException e) {
                                     Log.d("Miga","Receive_info_multi_new_connect time out");
@@ -5393,10 +5395,11 @@ public class Control extends Service {
                     temp = MyNewConnectInfo.split("#");//[0] SSID,[1] Neighbor,[2] NeighborNum,[3] POWER,[4] ClusterName,[5] WiFiInterface,[6] P2PInterface
                     //進行更新新的ROLE
                     ROLE = RoleFlag.NONE.getIndex();//先None，為了下面方便判斷用
-                    if((!temp[6].equals("GO"))&&(!temp[6].equals("None"))){//不為GO也不為NONE表示要連到別人那裡
+                    if((!temp[6].equals("GO"))){//不為GO，表示可能要連到別人那裡
                         //GO移除group
                         GOdisconnect();
-                        ROLE = RoleFlag.BRIDGE.getIndex();
+                        if(!temp[6].equals("None"))//不為None
+                            ROLE = RoleFlag.BRIDGE.getIndex();
                     }
                     if(temp[6].equals("GO")){//檢查是否要建立GO
                         CreateP2PGroup();//建立P2P group
@@ -5414,6 +5417,8 @@ public class Control extends Service {
 
                     }
                     Thread.sleep(30000);//等30秒(這裡要等的原因是要讓那些可能正在進行wifi連線或是p2p連線的裝置有緩衝時間)
+                    Log.d("Miga","My new ROLE: "+ROLE);
+                    s_status="My new Roke: "+ROLE;
                     VariableInitial();//初始化
                 }
             }catch (Exception e){
@@ -5679,7 +5684,7 @@ public class Control extends Service {
         Neighbor_record.clear();
         IPTable.clear();//IPTable清除
         //Log.d("Miga", "VariableInitial/IPTable:" + IPTable);
-        s_status = "VariableInitial/IPTable:" + IPTable;
+        //s_status = "VariableInitial/IPTable:" + IPTable;
         DifferentCNnum = 0;
     }
 

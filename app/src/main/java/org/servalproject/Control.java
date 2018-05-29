@@ -311,6 +311,7 @@ public class Control extends Service {
     static public boolean enabletimer = false;//Controller實驗的timer
     boolean isSavestarttime=false;
     boolean isSaveendtime=false;
+    int packetNum=0;
 
     //For Controller Start
     private List<CandidateController_set> CandController_record;
@@ -3091,7 +3092,7 @@ public class Control extends Service {
                         //因為若peer不在了,則他的值會在每一次執行這個thread時,所對應的value會一直遞減.
                         //若peer還在group內,則他會藉由再傳送過來的peer資料,將所對應的value更新為10 (receive_peer_count)
                         // update peer table
-                        iterator = PeerTable.keySet().iterator();
+                        /*iterator = PeerTable.keySet().iterator();
                         while (iterator.hasNext()) {
                             tempkey = iterator.next().toString();
                             PeerTable.put(tempkey, PeerTable.get(tempkey) - 1);//一一把PeerTable內對應到的SSID的value-1
@@ -3101,7 +3102,7 @@ public class Control extends Service {
                                 Log.v("Miga", "remove Peer:"+tempkey);
                                 s_status = "remove Peer:"+tempkey;
                             }
-                        }
+                        }*/
                         //Log.v("Miga", "PeerTable:" + PeerTable);
                         //s_status = "PeerTable:" + PeerTable;
                         sendds.close();// 20180520 關socket
@@ -3555,20 +3556,24 @@ public class Control extends Service {
         @Override
         public void onReceive(Context ctxt, Intent intent) {
             int level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, 0);
-            if(level==31) {
+            if(level==26) {
                 if(!isSavestarttime) {
-                    starttimer = System.nanoTime();
-                    s_status = "31 : " + starttimer;
-                    Log.d("Miga", "31 : " + starttimer);
+                    starttimer = Calendar.getInstance().getTimeInMillis();
+                    //Double.toString(((Calendar.getInstance().getTimeInMillis() - start_time) / 1000.0))
+                    //starttimer = System.nanoTime();
+                    s_status = "26 : " + starttimer;
+                    Log.d("Miga", "26 : " + starttimer);
                     isSavestarttime = true;
                 }
             }
-            else if (level==30) {
+            else if (level==21) {
                 if(!isSaveendtime) {
-                    endtimmer = System.nanoTime();
+                    //endtimmer = System.nanoTime();
+                    endtimmer =Calendar.getInstance().getTimeInMillis();
                     long durationtime = endtimmer - starttimer;
-                    s_status = "from 31 to 30: " + durationtime / 1000000000 + " sec";
-                    Log.d("Miga", "from 31 to 30: " + durationtime / 1000000000 + " sec");
+                    s_status = "from 26 to 21: " + Double.toString((endtimmer - starttimer)/1000.0)  + " sec"+" , pkt: "+packetNum;
+                    Log.d("Miga","from 26 to 21: " + Double.toString((endtimmer - starttimer)/1000.0)  + " sec"+" , pkt: "+packetNum);
+                    //Log.d("Miga", "from 31 to 30: " + TimeUnit.NANOSECONDS.toSeconds(durationtime) + " sec");
                     isSaveendtime = true;
                 }
             }
@@ -4471,8 +4476,8 @@ public class Control extends Service {
                             }
                         }
                         //Log.d("Miga","Send_info IsP2Pconnect");
-                        int randomnum = randomWithRange(2,3)*1000;
-                        Thread.sleep(randomnum);
+                        //int randomnum = randomWithRange(2,3)*1000;
+                        Thread.sleep(200);
                         //Log.d("Miga","Sleep:"+randomnum);
                         if( ControllerAuto && IsNeighborCollect ){ //要執行controller且已經蒐集完鄰居的資料了
                             message = WiFiApName + "#" + NeighborList + "#" +Integer.toString(NeighborListNum) + "#" + Integer.toString(power_level) + "#" + WiFiApName + "#" + "None"+ "#" + "None"+ "#" + "5";//SSID,Neighbor,Neighbornum,Power,ClusterName,WiFi interface,P2P interface,ttl
@@ -4507,8 +4512,8 @@ public class Control extends Service {
                                 multicsk = new MulticastSocket(6793);//6793: for controller
                                 msgPkt = new DatagramPacket(message.getBytes(), message.length(), multicgroup, 6793);
                                 multicsk.send(msgPkt);
-                                Log.v("Miga", "multicsk send message:" + message);
-                                s_status = "multicsk send message" + message;
+                                //Log.v("Miga", "multicsk send message:" + message);
+                                //s_status = "multicsk send message" + message;
                             }
                         }
                         senddsk.close();// 20180520 關socket
@@ -4611,6 +4616,9 @@ public class Control extends Service {
                                     return;//不是Controller，當收到自己新的的info,因此結束這個thread
                             }
                         }
+                        if(RunNewConnectionTime>=1){
+                            packetNum+=1;
+                        }
                         try {//新的topology改變後，GO需要蒐集Client的IP，才能去做轉傳pkt
                             if (receivedpkt_cinfo != null) {
                                 InetAddress WiFiIPAddress = receivedpkt_cinfo.getAddress();
@@ -4665,7 +4673,7 @@ public class Control extends Service {
                                     obj_num++;
                                 }
                                 Log.d("Miga", "0Receive_info/Controller_record: " + Collect_contain);
-                                int randomnum = randomWithRange(2,3)*1000;
+                                int randomnum = randomWithRange(1,2)*1000;
                                 Thread.sleep(randomnum);
                             }else {//不是Controller的要幫忙Relay packet
                                 message = RecvMsg_cinfo;
@@ -4746,7 +4754,7 @@ public class Control extends Service {
                                         senddsk.close();// 20180520 關socket
                                     if (multicsk != null)
                                         multicsk.close();// 20180520 關socket
-                                    Thread.sleep(1500);
+                                    //Thread.sleep(1500);
                                 }
                             }////End 不是Controller的要幫忙Relay packet
 
@@ -5016,7 +5024,7 @@ public class Control extends Service {
                     //Log.d("Miga","Send_info ControllerAuto");
                     if (IsSecondRoundOver) {
                         //Log.d("Miga","Send_info IsP2Pconnect");
-                        int randomnum = randomWithRange(2,3)*1000;
+                        int randomnum = randomWithRange(1,2)*1000;
                         Thread.sleep(randomnum);
                         //迴圈來傳送每一個device的連線msg
                         for(int i = 0; i < Final_Controller_record.size();i++) {
@@ -5055,7 +5063,7 @@ public class Control extends Service {
                                 //s_status = "Send_info_new_connect pkt:" + message;
                             }else{
                                 MyNewConnectInfo = Final_Controller_record.get(i).toString_Final();//Controller取得自己的
-                                if(send_time == 3) {
+                                if(send_time == 5) {
                                     IsReceiveMyself = true;//Controllert傳送5次後，就不在傳送了
                                     //New_Connection_Func();//Controller也開啟新的連線
                                     if(t_New_Connection_Func==null){
@@ -5389,9 +5397,9 @@ public class Control extends Service {
             try {
                 if (IsReceiveMyself) {
                     if(IsController)
-                        Thread.sleep(15000);
+                        Thread.sleep(30000);
                     else
-                        Thread.sleep(20000);//非controller才要睡那麼久，因為要幫忙轉傳
+                        Thread.sleep(40000);//非controller才要睡那麼久，因為要幫忙轉傳
                     Log.d("Miga","Start New_connection_func!");
                     IsNewConnection = true;//已開始進行新連線
                     Thread.sleep(10000);

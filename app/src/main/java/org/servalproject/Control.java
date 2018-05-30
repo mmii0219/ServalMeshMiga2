@@ -35,6 +35,7 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.PowerManager;
+import android.text.format.DateFormat;
 import android.text.format.Time;
 import android.text.method.ScrollingMovementMethod;
 import android.util.Log;
@@ -2756,6 +2757,9 @@ public class Control extends Service {
                     if(RecvMsg_pc!="") {
                         temp = RecvMsg_pc.split("#");//將message之中有#則分開存到tmep陣列裡;message = WiFiApName + "#" + Cluster_Name + "#" + "5"+ "#" +ROLE;
                         if(temp.length>1) {
+                            if(isSavestarttime && (!isSaveendtime)){//controller實驗計算封包用，已經儲存實驗的電量(26%時變為true)
+                                packetNum+=1;
+                            }
                             if (temp[0] != null && temp[1] != null && temp[2] != null && WiFiApName != null) {
                                 if (Newcompare(temp[0], WiFiApName) != 0) {//接收到的data和此裝置的SSID不同; 若A>B則reutrn 1
                                     InetAddress P2PIPAddress = receivedpkt_pc.getAddress();
@@ -3561,8 +3565,10 @@ public class Control extends Service {
                     starttimer = Calendar.getInstance().getTimeInMillis();
                     //Double.toString(((Calendar.getInstance().getTimeInMillis() - start_time) / 1000.0))
                     //starttimer = System.nanoTime();
-                    s_status = "26 : " + starttimer;
-                    Log.d("Miga", "26 : " + starttimer);
+                    Calendar mCal = Calendar.getInstance();
+                    CharSequence s = DateFormat.format("yyyy-MM-dd kk:mm:ss", mCal.getTime());    // kk:24小時制, hh:12小時制
+                    s_status = "26 : " + starttimer+" , time:"+s.toString();
+                    Log.d("Miga", "26 : " + starttimer+" , time:"+s.toString());
                     isSavestarttime = true;
                 }
             }
@@ -3571,8 +3577,10 @@ public class Control extends Service {
                     //endtimmer = System.nanoTime();
                     endtimmer =Calendar.getInstance().getTimeInMillis();
                     long durationtime = endtimmer - starttimer;
-                    s_status = "from 26 to 21: " + Double.toString((endtimmer - starttimer)/1000.0)  + " sec"+" , pkt: "+packetNum;
-                    Log.d("Miga","from 26 to 21: " + Double.toString((endtimmer - starttimer)/1000.0)  + " sec"+" , pkt: "+packetNum);
+                    Calendar mCal = Calendar.getInstance();
+                    CharSequence s = DateFormat.format("yyyy-MM-dd kk:mm:ss", mCal.getTime());    // kk:24小時制, hh:12小時制
+                    s_status = "from 26 to 21: " + Double.toString((endtimmer - starttimer)/1000.0)  + " sec"+" , pkt: "+packetNum+" , time:"+s.toString();
+                    Log.d("Miga","from 26 to 21: " + Double.toString((endtimmer - starttimer)/1000.0)  + " sec"+" , pkt: "+packetNum+" , time:"+s.toString());
                     //Log.d("Miga", "from 31 to 30: " + TimeUnit.NANOSECONDS.toSeconds(durationtime) + " sec");
                     isSaveendtime = true;
                 }
@@ -4147,7 +4155,7 @@ public class Control extends Service {
                         if(SSID.equals(WiFiApName)){//是controller
                             IsController = true;//這個裝置是Controller
                             Log.d("Miga","I'm the controller");
-
+                            s_status = "I'm the controller";
                             //20180504 Start : 實驗用，若要讓裝置自己找neighbor則將getMyNeighbor註解
                             Thread.sleep(10000);
                             getMyNeighbor(WiFiApName);//取得我的neighbor
@@ -4186,6 +4194,7 @@ public class Control extends Service {
                             //開始處理每個Device配對問題
                             First_Round();
                         }else{
+                            s_status = "I'm not the controller";
                             IsControllerOpenFirstRond = true;
                             //開啟用來接收controller要傳送新的連線info的thread
                             if (t_Receive_info_new_connect == null) {
@@ -4616,7 +4625,7 @@ public class Control extends Service {
                                     return;//不是Controller，當收到自己新的的info,因此結束這個thread
                             }
                         }
-                        if(RunNewConnectionTime>=1){
+                        if(RunNewConnectionTime>=1 && isSavestarttime && (!isSaveendtime)){//controller實驗計算封包用，topology翻修完畢且已經儲存實驗的電量(26%時變為true)
                             packetNum+=1;
                         }
                         try {//新的topology改變後，GO需要蒐集Client的IP，才能去做轉傳pkt
@@ -4726,6 +4735,8 @@ public class Control extends Service {
                                         if (ROLE == RoleFlag.HYBRID.getIndex() || ROLE == RoleFlag.BRIDGE.getIndex()) {
                                             if (ROLE == RoleFlag.HYBRID.getIndex()) {//20180501 新增HYBRID轉傳給CLIENT的，測試可成功
                                                 // broadcast
+                                                senddsk = null;
+                                                senddsk = new DatagramSocket();
                                                 senddp = new DatagramPacket(message.getBytes(), message.length(),
                                                         InetAddress.getByName("192.168.49.255"), IP_port_controller_collect);
                                                 senddsk.send(senddp);
@@ -4739,7 +4750,7 @@ public class Control extends Service {
                                                     multicsk = new MulticastSocket(6793);//6790: for peertable update
                                                     msgPkt = new DatagramPacket(message.getBytes(), message.length(), multicgroup, 6793);
                                                     multicsk.send(msgPkt);
-                                                    multicsk.close();
+                                                    //multicsk.close();
                                                     //Log.v("Miga", "multicsk send message:" + message);
                                                     //s_status = "multicsk send message" + message;
                                                 }
@@ -5452,8 +5463,8 @@ public class Control extends Service {
 
                     }
                     Thread.sleep(30000);//等30秒(這裡要等的原因是要讓那些可能正在進行wifi連線或是p2p連線的裝置有緩衝時間)
-                    Log.d("Miga","My new ROLE: "+ROLE);
-                    s_status="My new Roke: "+ROLE;
+                    Log.d("Miga","My new Role: "+ROLE);
+                    s_status="My new Role: "+ROLE;
                     VariableInitial();//初始化
                 }
             }catch (Exception e){
@@ -5727,10 +5738,10 @@ public class Control extends Service {
     public void getMyNeighbor(String SSID){
         try {
             if (SSID.equals("Android_4a9e")) {
-                addNeighbor("", "", 2);
+                addNeighbor("Android_ea4a#Android_e9dd", getDevicePwd("Android_ea4a") + "#" + getDevicePwd("Android_e9dd"), 2);
                 IsNeighborCollect = true;
             } else if (SSID.equals("Android_e9dd")) {
-                addNeighbor("Android_ea4a#Android_9722", getDevicePwd("Android_ea4a") + "#" + getDevicePwd("Android_9722"), 2);
+                addNeighbor("Android_4a9e#Android_9722", getDevicePwd("Android_4a9e") + "#" + getDevicePwd("Android_9722"), 2);
                 Thread.sleep(4000);
                 IsNeighborCollect = true;
             } else if (SSID.equals("Android_9722")) {
@@ -5738,7 +5749,7 @@ public class Control extends Service {
                 Thread.sleep(4000);
                 IsNeighborCollect = true;
             } else if (SSID.equals("Android_ea4a")) {
-                addNeighbor("Android_988f#Android_e9dd", getDevicePwd("Android_988f") + "#" + getDevicePwd("Android_e9dd"), 2);
+                addNeighbor("Android_988f#Android_4a9e", getDevicePwd("Android_988f") + "#" + getDevicePwd("Android_4a9e"), 2);
                 Thread.sleep(4000);
                 IsNeighborCollect = true;
             } else if (SSID.equals("Android_988f")) {

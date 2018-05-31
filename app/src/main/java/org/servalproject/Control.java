@@ -5387,7 +5387,7 @@ public class Control extends Service {
     //取得該裝置的密碼，用來讓其他裝置連線用。這裡會寫這個主要是因為Bridge手動設置之後，因為兩端都連了別人，因此會造成不知道自己的密碼是甚麼的問題。
     public String getDevicePwd(String SSID){
         if(SSID.equals("Android_4a9e"))
-            return "Udpseqpr";
+            return "O95qzPnL";
         else if(SSID.equals("Android_e9dd"))
             return "6jq1pSN6";
         else if(SSID.equals("Android_9722"))
@@ -5690,7 +5690,7 @@ public class Control extends Service {
     //取得該裝置的MAC，用來讓其他裝置連線用。
     public String getDeviceMACAddress(String SSID){
         if(SSID.equals("Android_4a9e"))
-            return "60:45:cb:1b:e8:77";
+            return "62:45:cb:1b:e8:77";
         else if(SSID.equals("Android_e9dd"))
             return "62:45:cb:21:78:cf";
         else if(SSID.equals("Android_9722"))

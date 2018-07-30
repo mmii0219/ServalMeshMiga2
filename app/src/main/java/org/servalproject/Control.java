@@ -91,6 +91,7 @@ import org.servalproject.Graph;//For Controller Kruskal’s Minimum Spanning Tre
 import java.io.IOException;
 import java.util.Collection;
 import java.util.Iterator;
+import java.util.Stack;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.concurrent.TimeUnit;
@@ -313,6 +314,10 @@ public class Control extends Service {
     boolean isSavestarttime=false;
     boolean isSaveendtime=false;
     int packetNum=0;
+    //0730 For ChangeEdges()
+    private Stack<String> WaitStack;
+    private Stack<String> ProcessStack;
+    private int beProcessNum;
 
     //For Controller Start
     private List<CandidateController_set> CandController_record;
@@ -6037,6 +6042,7 @@ public class Control extends Service {
                                 Log.d("Miga","src&dest wifi&p2p is not null");
                                 //往回推改變已經分配好的的code
                                 //先移除wifi連線
+
                             }
                         }
                     }
@@ -6104,6 +6110,13 @@ public class Control extends Service {
         }
         Log.d("Miga", "updateSecondRecord/second_round_Controller_record" + Collect_contain);
     }
+
+    //往回推的function
+    public void ChangeEdges(){
+
+        //stack.push("ff");
+    }
+
     //檢查該device的wifi interface是否是空的
     public boolean CheckDeviceWifiConnect(int index){
         if(second_round_Controller_record.get(index).getWiFiInterface().contains("Android"))

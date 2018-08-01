@@ -584,7 +584,7 @@ public class Control extends Service {
 
             if(Integer.valueOf(this.POWER)<Integer.valueOf(POWER)){
                 return 1;
-            }else if(Integer.valueOf(this.POWER)<Integer.valueOf(POWER)){
+            }else if(Integer.valueOf(this.POWER)>Integer.valueOf(POWER)){
                 return -1;
             }
             //用STRING比較會有問題!!!
@@ -1083,7 +1083,8 @@ public class Control extends Service {
                                     WifiConfiguration wc = new WifiConfiguration();
                                     s_status = "State: choosing peer done, try to associate with" + ": SSID name: " + SSID + " , passwd: " + key;
                                     Log.d("Miga", "State: choosing peer done, try to associate with" + ": SSID name: " + SSID + " , passwd: " + key);
-                                    wc.SSID = "\"" + SSID + "\"";
+                                    wc.SSID = "\"" + getWholeSSID(SSID) + "\"";//180801
+                                    //wc.SSID = "\"" + SSID + "\"";
                                     wc.preSharedKey = "\"" + key + "\"";
                                     wc.hiddenSSID = true;
                                     wc.status = WifiConfiguration.Status.ENABLED;
@@ -1269,7 +1270,8 @@ public class Control extends Service {
                         WifiConfiguration wc = new WifiConfiguration();
                         s_status = "State: choosing peer done, try to associate with" + ": SSID name: " + SSID + " , passwd: " + key;
                         Log.d("Miga", "State: choosing peer done, try to associate with" + ": SSID name: " + SSID + " , passwd: " + key);
-                        wc.SSID = "\"" + SSID + "\"";
+                        wc.SSID = "\"" + getWholeSSID(SSID) + "\"";//180801
+                        //wc.SSID = "\"" + SSID + "\"";
                         wc.preSharedKey = "\"" + key + "\"";
                         wc.hiddenSSID = true;
                         wc.status = WifiConfiguration.Status.ENABLED;
@@ -1827,7 +1829,8 @@ public class Control extends Service {
             WifiConfiguration wc = new WifiConfiguration();
             s_status = "State: choosing peer done, try to associate with" + ": SSID name: " + SSID + " , passwd: " + key;
             Log.d("Miga", "State: choosing peer done, try to associate with" + ": SSID name: " + SSID + " , passwd: " + key);
-            wc.SSID = "\"" + SSID + "\"";
+            wc.SSID = "\"" + getWholeSSID(SSID) + "\"";//180801
+            //wc.SSID = "\"" + SSID + "\"";
             wc.preSharedKey = "\"" + key + "\"";
             wc.hiddenSSID = true;
             wc.status = WifiConfiguration.Status.ENABLED;

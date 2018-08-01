@@ -1571,6 +1571,7 @@ public class Control extends Service {
                 //become to bridge or hybrid
                 if (Collect_record.size() == 1) {//沒有收集到其他cluster的device
                     Log.d("Miga", "Device doesn't receive data from other devices of the other cluster. ");
+                    s_status = "Device doesn't receive data from other devices of the other cluster. ";
                     STATE = StateFlag.ADD_SERVICE.getIndex();
                     return;
                 }
@@ -1591,6 +1592,7 @@ public class Control extends Service {
                 SSID = Collect_record.get(0).getSSID();
                 if (SSID.equals(WiFiApName)) {
                     Log.d("Miga", "Step 2, I'm the best!");
+                    s_status = "Step 2, I'm the best!";
                     STATE = StateFlag.ADD_SERVICE.getIndex();
                     return;
                 }
@@ -2530,7 +2532,7 @@ public class Control extends Service {
             try {
                 bcMsg = new byte[8192];
                 dgpkt = new DatagramPacket(bcMsg, bcMsg.length);
-                dgskt = new DatagramSocket(IP_port_for_IPSave);
+                //dgskt = new DatagramSocket(IP_port_for_IPSave);//20180801 註解之後才可正常執行，否則會跳Exception
                 while(!isSuccessSend) {//還沒成功接收,則繼續接收GO回傳的msg
                     //Thread.sleep(20000);
                     dgskt = null; // 20180520 關socket
@@ -2739,6 +2741,7 @@ public class Control extends Service {
         private int i;
         private DatagramPacket msgPkt;//Miga
         private boolean isreceiveformbridge=false;
+        private boolean isUpdateCN=false;//20180801用來解決手動設置角色後，client的CN無法更新的問題
 
 
         public void run() {
@@ -2821,6 +2824,20 @@ public class Control extends Service {
                                     // update peer table
                                     //if (Newcompare(temp[1], Cluster_Name) == 0) {//相同Cluster_Name
                                     if (!PeerTable.containsKey(temp[0])) {
+                                        InetAddress WiFiIPAddress = receivedpkt_pc.getAddress();
+                                        String clientip = WiFiIPAddress.toString().split("/")[1];//接收CLIENT的IP
+                                        /*20180801 新增 Start, 避免手動設置role時，client無法更新CN的問題。*/
+                                        if(IsManual) {//IsManual = true 這個裝置是手動先連線的
+                                            if (!isUpdateCN) {//還沒更新CN
+                                                if(clientip.equals("192.168.49.1")){//GO傳來的
+                                                    Cluster_Name = temp[0];//更新自己的CN為GO的CN
+                                                    isUpdateCN = true;//已更新完
+                                                    Log.d("Miga","Update CN:"+ Cluster_Name);
+                                                    s_status = "Update CN:"+Cluster_Name;
+                                                }
+                                            }
+                                        }
+                                        /*20180801 新增 End, 避免手動設置role時，client無法更新CN的問題。*/
                                         PeerTable.put(temp[0], 20);//填入收到data的SSID(WiFiApName)
                                         if (count_peer() + 1 != pre_peer_count) {
                                             pre_peer_count = count_peer() + 1;//更新現在PeerTable內有幾個Peer
@@ -2830,8 +2847,7 @@ public class Control extends Service {
                                                     + " Round_Num :" + NumRound + " peer count : " + (count_peer() + 1) + " PeerTable:" + PeerTable);
                                         }
 
-                                        InetAddress WiFiIPAddress = receivedpkt_pc.getAddress();
-                                        String clientip = WiFiIPAddress.toString().split("/")[1];//接收CLIENT的IP
+
                                         if (!clientip.equals("192.168.49.1")) {//不是GO(GO的不存在CLINET內)
                                             if (!IPTable.containsKey(clientip)) {//避免client在sendWiFiIPAddress沒有成功傳來，因此直接在這邊做IPTable的儲存->SendWiFiIPAddress和Collect_IPServer之後可以拿掉了
                                                 IPTable.put(clientip, 0);
@@ -2840,8 +2856,6 @@ public class Control extends Service {
                                             }
                                         }
                                     }
-                                    //Log.v("Miga", "PeerTable:" + PeerTable);
-                                    //s_status = "PeerTable:" + PeerTable;
                                     //}
 
                                     try {

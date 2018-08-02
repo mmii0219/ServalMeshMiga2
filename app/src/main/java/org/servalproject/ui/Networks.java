@@ -69,6 +69,7 @@ public class Networks extends Activity implements CompoundButton.OnCheckedChange
     private CheckBox enabled;
     private CheckBox enabledstep2;////Miga 20180409
     private CheckBox enabledcontroller;////Miga 20180508
+    private CheckBox enabledFile;////Miga 20180730
     private static final String TAG = "Networks";
     private static boolean WiFiDirectChecked = false;
     private Intent serviceIntent = null;
@@ -565,6 +566,18 @@ public class Networks extends Activity implements CompoundButton.OnCheckedChange
         }
     };
     //Miga End
+    //Miga 20180802
+    private CheckBox.OnCheckedChangeListener chkfilelistener = new CheckBox.OnCheckedChangeListener(){
+        @Override
+        public void onCheckedChanged(CompoundButton buttonView,boolean isChecked) {
+            if(enabledFile.isChecked()){
+                WiFiDirectService.SendFileAuto=true;
+            }else if (!enabledFile.isChecked()){
+                WiFiDirectService.SendFileAuto=false;
+            }
+        }
+    };
+    //Miga End
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -581,6 +594,10 @@ public class Networks extends Activity implements CompoundButton.OnCheckedChange
         //Miga 20180508
         this.enabledcontroller = (CheckBox) this.findViewById(R.id.enablecontroller);
         this.enabledcontroller.setOnCheckedChangeListener(chkcontrollerlistener);
+        //Miga End
+        //Miga 20180802
+        this.enabledFile = (CheckBox) this.findViewById(R.id.enabledFile);
+        this.enabledFile.setOnCheckedChangeListener(chkfilelistener);
         //Miga End
         this.app = (ServalBatPhoneApplication) this.getApplication();
         this.nm = NetworkManager.getNetworkManager(app);

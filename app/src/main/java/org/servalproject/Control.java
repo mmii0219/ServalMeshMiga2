@@ -32,6 +32,7 @@ import android.os.AsyncTask;
 import android.os.BatteryManager;
 import android.os.Binder;
 import android.os.Build;
+import android.os.Environment;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.PowerManager;
@@ -45,6 +46,8 @@ import android.widget.TextView;
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
@@ -67,10 +70,12 @@ import java.net.SocketException;
 import java.net.SocketTimeoutException;
 import java.net.UnknownHostException;
 import java.nio.ByteOrder;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.Date;
 import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.List;
@@ -318,6 +323,18 @@ public class Control extends Service {
     private Stack<String> WaitStack;
     private Stack<String> ProcessStack;
     private int beProcessNum;
+    //0731 For Send file
+    static public boolean SendFileAuto = false;
+    private byte[] lMsg_sf;
+    private String RecvMsg_sf="";
+    private static int IP_port_send_file = 2652;//
+    private Thread t_send_file = null;
+    private Thread t_receive_file = null;
+    private MulticastSocket recvSFSocket;//Miga , for Send File 20180731
+    private DatagramPacket receivedpkt_sf;
+    private DatagramSocket receivedskt_sf;//unicast
+    private Thread t_Receive_File_multi = null;
+    private Thread t_Receive_File_uni = null;
 
     //For Controller Start
     private List<CandidateController_set> CandController_record;
@@ -3453,6 +3470,181 @@ public class Control extends Service {
             }
         }
     }
+
+    //20180802 Send file (use udp socket)
+    public class Send_File extends Thread{
+        private DatagramPacket dp;
+        private DatagramSocket sendds;
+        private Iterator iterator;
+        private String message, tempkey;
+        MulticastSocket multicsk;//Miga20180313
+        DatagramPacket msgPkt;//Miga
+        public void run(){
+            Log.d("Miga", Environment.getExternalStorageDirectory().toString() + "/Download/test5.txt");
+            File file = new File(Environment.getExternalStorageDirectory()+"/Download/", "test5.txt");
+            byte[] bytes = new byte[65507];
+            BufferedInputStream bis;
+            IsP2Pconnect= true;
+            try{
+
+                bis = new BufferedInputStream(new FileInputStream(file));
+                sendds = null;
+                sendds = new DatagramSocket();
+                while(true){//20180518 Controller 開啟時，這個thread就不執行了
+                    if (IsP2Pconnect) {
+                        if (SendFileAuto){
+                            sendds = null;// 20180520 關socket
+                            sendds = new DatagramSocket();// 20180520 關socket
+                            Thread.sleep(4000);
+                            //message = WiFiApName + "#" + Cluster_Name + "#" + "5";// 0: source SSID 1: cluster name 2: TTL
+                            // unicast
+                            if (WiFiApName.equals("Android_988f")) {
+                                message = "Send File" + "#" + file.length();// 0: Send  1: file.length()
+                                dp = new DatagramPacket(message.getBytes(), message.length(),
+                                            InetAddress.getByName("192.168.49.164"), IP_port_send_file);
+                                sendds.send(dp);
+                                Log.d("Miga", "message: "+message);
+                                for (int idx = 0; idx < file.length(); idx += 65507) {
+
+                                    bis.read(bytes, 0, bytes.length);
+
+                                    dp = new DatagramPacket(bytes, bytes.length, InetAddress.getByName("192.168.49.164"), IP_port_send_file);
+                                    sendds.send(dp);//一一傳送給IPTable內的所有IP
+                                    Thread.sleep(40);
+                                    Log.d("Miga", "idx:" + idx + " " + String.valueOf(bytes.length));
+                                }
+                                bis.close();
+                                Thread.sleep(600000);//sleep 600sec , 10mins
+                            }
+
+                            //multicast
+                            if (mConnectivityManager != null) {
+                                mNetworkInfo = mConnectivityManager.getNetworkInfo(ConnectivityManager.TYPE_WIFI);
+                                if (mNetworkInfo.isConnected()) {
+                                    multicgroup = InetAddress.getByName("224.0.0.3");//指定multicast要發送的group
+                                    multicsk = null;// 20180520 關socket
+                                    multicsk = new MulticastSocket(6796);//6790: for peertable update
+                                    //msgPkt = new DatagramPacket(message.getBytes(), message.length(), multicgroup, 6790);
+                                    msgPkt = new DatagramPacket(bytes, bytes.length, multicgroup, 6796);
+                                    multicsk.send(msgPkt);
+                                    //Log.v("Miga", "multicsk send message:" + message);
+                                    //s_status = "multicsk send message" + message;
+                                }
+                            }
+                            sendds.close();// 20180520 關socket
+                            if (multicsk != null)
+                                multicsk.close();// 20180520 關socket
+                        }
+                        else
+                            Thread.sleep(100);
+                    }
+                    //Thread.sleep(1000);
+
+                }
+            } catch (SocketException e) {
+                e.printStackTrace();
+                Log.d("Miga", "Send_File Socket exception" + e.toString());
+            } catch (IOException e) {
+                e.printStackTrace();
+                Log.d("Miga", "Send_File IOException" + e.toString());
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+                Log.d("Miga", "Send_File InterruptedException" + e.toString());
+            } catch (Exception e) {
+                e.printStackTrace();
+                Log.d("Miga", "Send_File other exception" + e.toString());
+            }
+
+
+
+        }
+    }
+
+    public class Receive_File extends Thread{
+        int start=0,start_time_send_file,start_rf=0;
+        Date start_time_first_receive,end_time_first_receive;
+        long seconds_diff=0;
+        String[] temp_rf;
+        public void run(){
+            try{
+                //20180326將multicast和unicast的socket分成兩個thread來寫，小的thread所接收的data會用global來儲存，再由此thread來處理資料。
+                lMsg_sf = new byte[65507];
+                receivedpkt_sf = new DatagramPacket(lMsg_sf, lMsg_sf.length);//接收到的message會存在IMsg
+                receivedskt_sf = new DatagramSocket(IP_port_send_file);
+                IsP2Pconnect = true;
+                File file = null;
+                FileOutputStream fos = null;
+                int total = 0;
+
+                while(true) {//20180518 Controller 開啟時，這個thread就不執行了
+                    if (ROLE == RoleFlag.CLIENT.getIndex()){//是client才開啟接收檔案的thread
+                        if (receivedpkt_sf != null) {
+                            try {
+                                receivedskt_sf.setSoTimeout(2000);
+                                receivedskt_sf.receive(receivedpkt_sf);//把接收到的data存在receivedp.
+                            } catch (SocketTimeoutException e) {
+                                Log.d("Miga", "Receive_File_unicastsocket time out");
+                                if (ControllerAuto)
+                                    Thread.sleep(600000);//sleep 600sec , 10mins
+                            }
+                            RecvMsg_sf = new String(lMsg_sf, 0, receivedpkt_sf.getLength());//將接收到的IMsg轉換成String型態
+                            //Log.d("Miga", "I got message from unicast" + RecvMsg_pc);
+                            //s_status = "I got message from unicast" + RecvMsg_pc;
+                        }
+                        if (RecvMsg_sf.trim() != "") {
+                            if(start_rf==0) {//第一次才需要去split，因為後面傳來的都是所需要的檔案資料
+                                if(RecvMsg_sf.contains("Send File")) {
+                                    temp_rf = RecvMsg_sf.split("#");// 0: Send  1: file.length()
+                                    Log.d("Miga", "total:"+temp_rf[1]);
+                                    total =  Integer.valueOf(temp_rf[1]);
+                                    start_rf = 1;
+                                }
+                                continue;
+                            }
+                            if (temp_rf[0].equals("Send File")){
+                                //Log.d("Miga", "total:"+total);
+                                if (start == 0) {
+                                    file = new File(Environment.getExternalStorageDirectory() + "/Download/", "test5.txt");
+                                    fos = new FileOutputStream(file);
+                                    start_time_first_receive = new Date();
+                                    start = 1;//已記錄開始時間
+                                }
+                                if (total < lMsg_sf.length) {
+                                    fos.write(lMsg_sf, 0, total);
+                                    total = 0;
+                                    fos.close();
+                                    Log.d("Miga", "File Closed");
+                                    end_time_first_receive = new Date();
+                                    seconds_diff = end_time_first_receive.getTime() - start_time_first_receive.getTime();
+                                    s_status = "Receive_File time : " + Double.toString(seconds_diff / 1000.0);
+                                    Log.d("Miga", "Receive_File time : " + Double.toString(seconds_diff / 1000.0));
+                                    Thread.sleep(600000);//sleep 600sec , 10mins
+                                } else {
+                                    fos.write(lMsg_sf);
+                                    //Log.d("Miga","RecvMsg:"+new String(lMsg_sf, 0, receivedpkt_sf.getLength()));
+                                    total -= lMsg_sf.length;
+                                }
+                                Log.d("Miga", String.valueOf(lMsg_sf.length));
+                            }
+                        }
+                    }
+                }
+            }catch (SocketException e) {
+                e.printStackTrace();
+                Log.d("Miga", "Receive_File Socket exception" + e.toString());
+            } catch (IOException e) {
+                e.printStackTrace();
+                Log.d("Miga", "Receive_File IOException" + e.toString());
+            } catch (Exception e) {
+                e.printStackTrace();
+                Log.d("Miga", "Receive_File Exception" + e.toString());
+            }
+
+
+
+        }
+    }
+
     @Override
     public void onCreate() {
         // Leaf0818
@@ -3983,7 +4175,15 @@ public class Control extends Service {
             t_Conroller_Thread = new Conroller_Thread();
             t_Conroller_Thread.start();
         }
-
+        //20180801 SendFile
+        if (t_send_file == null) {
+            t_send_file = new Send_File();
+            t_send_file.start();
+        }
+        if (t_receive_file == null) {
+            t_receive_file = new Receive_File();
+            t_receive_file.start();
+        }
         // </aqua0722>
         new Task().execute(State.On);
         serviceRunning = true;

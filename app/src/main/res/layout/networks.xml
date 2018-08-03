@@ -78,8 +78,9 @@
         android:id="@+id/enabledFile"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_above="@+id/enablecontroller"
-        android:layout_alignParentEnd="true"
-        android:layout_marginEnd="113dp"
+        android:layout_alignBaseline="@+id/serval_status"
+        android:layout_alignBottom="@+id/serval_status"
+        android:layout_toEndOf="@+id/enablestep2"
+        android:layout_toRightOf="@+id/enablestep2"
         android:text="Send File" />
 </RelativeLayout>

@@ -335,6 +335,9 @@ public class Control extends Service {
     private DatagramSocket receivedskt_sf;//unicast
     private Thread t_Receive_File_multi = null;
     private Thread t_Receive_File_uni = null;
+    private File send_file, receive_file;
+    private BufferedInputStream bis;
+
 
     //For Controller Start
     private List<CandidateController_set> CandController_record;
@@ -3479,32 +3482,33 @@ public class Control extends Service {
         private String message, tempkey;
         MulticastSocket multicsk;//Miga20180313
         DatagramPacket msgPkt;//Miga
+        int start =0;
         public void run(){
-            Log.d("Miga", Environment.getExternalStorageDirectory().toString() + "/Download/test5.txt");
-            File file = new File(Environment.getExternalStorageDirectory()+"/Download/", "test5.txt");
-            byte[] bytes = new byte[65507];
-            BufferedInputStream bis;
-            IsP2Pconnect= true;
-            try{
-
-                bis = new BufferedInputStream(new FileInputStream(file));
+           try{
+                byte[] bytes = new byte[65507];
                 sendds = null;
                 sendds = new DatagramSocket();
                 while(true){//20180518 Controller 開啟時，這個thread就不執行了
                     if (IsP2Pconnect) {
                         if (SendFileAuto){
+                            if (start == 0) {
+                                //file = new File(Environment.getExternalStorageDirectory() + "/Download/", "test5.txt");
+                                Log.d("Miga", Environment.getExternalStorageDirectory().toString() + "/DCIM/Camera/P_20180803_111038.jpg");
+                                send_file = new File(Environment.getExternalStorageDirectory() + "/DCIM/Camera/","P_20180803_111038.jpg");
+                                bis = new BufferedInputStream(new FileInputStream(send_file));
+                                start = 1;//已開始
+                            }
                             sendds = null;// 20180520 關socket
                             sendds = new DatagramSocket();// 20180520 關socket
-                            Thread.sleep(4000);
-                            //message = WiFiApName + "#" + Cluster_Name + "#" + "5";// 0: source SSID 1: cluster name 2: TTL
+                            //Thread.sleep(4000);
                             // unicast
-                            if (WiFiApName.equals("Android_988f")) {
-                                message = "Send File" + "#" + file.length();// 0: Send  1: file.length()
+                            //if (WiFiApName.equals("Android_988f")) {
+                                message = "Send File" + "#" + send_file.length();// 0: Send  1: file.length()
                                 dp = new DatagramPacket(message.getBytes(), message.length(),
                                             InetAddress.getByName("192.168.49.164"), IP_port_send_file);
                                 sendds.send(dp);
                                 Log.d("Miga", "message: "+message);
-                                for (int idx = 0; idx < file.length(); idx += 65507) {
+                                for (int idx = 0; idx < send_file.length(); idx += 65507) {
 
                                     bis.read(bytes, 0, bytes.length);
 
@@ -3515,9 +3519,8 @@ public class Control extends Service {
                                 }
                                 bis.close();
                                 Thread.sleep(600000);//sleep 600sec , 10mins
-                            }
-
-                            //multicast
+                            //}
+                            /*//multicast
                             if (mConnectivityManager != null) {
                                 mNetworkInfo = mConnectivityManager.getNetworkInfo(ConnectivityManager.TYPE_WIFI);
                                 if (mNetworkInfo.isConnected()) {
@@ -3530,7 +3533,7 @@ public class Control extends Service {
                                     //Log.v("Miga", "multicsk send message:" + message);
                                     //s_status = "multicsk send message" + message;
                                 }
-                            }
+                            }*/
                             sendds.close();// 20180520 關socket
                             if (multicsk != null)
                                 multicsk.close();// 20180520 關socket
@@ -3538,8 +3541,6 @@ public class Control extends Service {
                         else
                             Thread.sleep(100);
                     }
-                    //Thread.sleep(1000);
-
                 }
             } catch (SocketException e) {
                 e.printStackTrace();
@@ -3571,11 +3572,8 @@ public class Control extends Service {
                 lMsg_sf = new byte[65507];
                 receivedpkt_sf = new DatagramPacket(lMsg_sf, lMsg_sf.length);//接收到的message會存在IMsg
                 receivedskt_sf = new DatagramSocket(IP_port_send_file);
-                IsP2Pconnect = true;
-                File file = null;
                 FileOutputStream fos = null;
                 int total = 0;
-
                 while(true) {//20180518 Controller 開啟時，這個thread就不執行了
                     if (ROLE == RoleFlag.CLIENT.getIndex()){//是client才開啟接收檔案的thread
                         if (receivedpkt_sf != null) {
@@ -3604,8 +3602,9 @@ public class Control extends Service {
                             if (temp_rf[0].equals("Send File")){
                                 //Log.d("Miga", "total:"+total);
                                 if (start == 0) {
-                                    file = new File(Environment.getExternalStorageDirectory() + "/Download/", "test5.txt");
-                                    fos = new FileOutputStream(file);
+                                    //file = new File(Environment.getExternalStorageDirectory() + "/Download/", "test5.txt");
+                                    receive_file = new File(Environment.getExternalStorageDirectory() + "/DCIM/Camera/","P_20180803_111038.jpg");
+                                    fos = new FileOutputStream(receive_file);
                                     start_time_first_receive = new Date();
                                     start = 1;//已記錄開始時間
                                 }

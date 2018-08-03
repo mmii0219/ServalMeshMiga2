@@ -3503,22 +3503,28 @@ public class Control extends Service {
                             //Thread.sleep(4000);
                             // unicast
                             //if (WiFiApName.equals("Android_988f")) {
+                            iterator = IPTable.keySet().iterator();//IPTable的keySet為許多IP所組成
+                            while (iterator.hasNext()) {
+                                tempkey = iterator.next().toString();
+                                Log.d("Miga","Send ip:"+tempkey );
                                 message = "Send File" + "#" + send_file.length();// 0: Send  1: file.length()
                                 dp = new DatagramPacket(message.getBytes(), message.length(),
-                                            InetAddress.getByName("192.168.49.164"), IP_port_send_file);
+                                        InetAddress.getByName(tempkey), IP_port_send_file);
                                 sendds.send(dp);
                                 Log.d("Miga", "message: "+message);
                                 for (int idx = 0; idx < send_file.length(); idx += 65507) {
 
                                     bis.read(bytes, 0, bytes.length);
 
-                                    dp = new DatagramPacket(bytes, bytes.length, InetAddress.getByName("192.168.49.164"), IP_port_send_file);
+                                    dp = new DatagramPacket(bytes, bytes.length, InetAddress.getByName(tempkey), IP_port_send_file);
                                     sendds.send(dp);//一一傳送給IPTable內的所有IP
                                     Thread.sleep(40);
                                     Log.d("Miga", "idx:" + idx + " " + String.valueOf(bytes.length));
                                 }
                                 bis.close();
-                                Thread.sleep(600000);//sleep 600sec , 10mins
+                            }
+
+                            Thread.sleep(600000);//sleep 600sec , 10mins
                             //}
                             /*//multicast
                             if (mConnectivityManager != null) {
@@ -3617,6 +3623,12 @@ public class Control extends Service {
                                     seconds_diff = end_time_first_receive.getTime() - start_time_first_receive.getTime();
                                     s_status = "Receive file total time : " + Double.toString(seconds_diff / 1000.0)+" sec";
                                     Log.d("Miga", "Receive file total time : " + Double.toString(seconds_diff / 1000.0)+" sec");
+                                    if(ROLE == RoleFlag.HYBRID.getIndex()){//若這隻裝置角色還有client，則必須再將此file傳送給他的client
+                                        //開啟Send_File
+                                        SendFileAuto= true;
+                                        Log.d("Miga","Send file to my client.");;
+                                        s_status = "Send file to my client!";
+                                    }
                                     Thread.sleep(600000);//sleep 600sec , 10mins
                                 } else {
                                     fos.write(lMsg_sf);
@@ -3624,7 +3636,7 @@ public class Control extends Service {
                                     total -= lMsg_sf.length;
                                     receive_total += lMsg_sf.length;
                                     s_status = "Download the file: "+Integer.toString((receive_total/Integer.valueOf(temp_rf[1]))*100)+" %";
-                                    //Log.d("Miga", "Download the file: "+Double.toString(((double)receive_total/(double)Integer.valueOf(temp_rf[1]))*100)+" %");
+                                    //Log.d("Miga", "Download the file: "+Integer.toString((receive_total/Integer.valueOf(temp_rf[1]))*100)+" %");
                                 }
                                 //Log.d("Miga", String.valueOf(lMsg_sf.length));
                             }

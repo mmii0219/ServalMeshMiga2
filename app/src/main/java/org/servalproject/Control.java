@@ -3493,8 +3493,8 @@ public class Control extends Service {
                         if (SendFileAuto){
                             if (start == 0) {
                                 //file = new File(Environment.getExternalStorageDirectory() + "/Download/", "test5.txt");
-                                Log.d("Miga", Environment.getExternalStorageDirectory().toString() + "/DCIM/Camera/P_20180803_111038.jpg");
-                                send_file = new File(Environment.getExternalStorageDirectory() + "/DCIM/Camera/","P_20180803_111038.jpg");
+                                Log.d("Miga", Environment.getExternalStorageDirectory().toString() + "/Download/test5.txt");
+                                send_file = new File(Environment.getExternalStorageDirectory() + "/Download/", "test5.txt");
                                 bis = new BufferedInputStream(new FileInputStream(send_file));
                                 start = 1;//已開始
                             }
@@ -3566,6 +3566,7 @@ public class Control extends Service {
         Date start_time_first_receive,end_time_first_receive;
         long seconds_diff=0;
         String[] temp_rf;
+        int receive_total=0;//已接收多少
         public void run(){
             try{
                 //20180326將multicast和unicast的socket分成兩個thread來寫，小的thread所接收的data會用global來儲存，再由此thread來處理資料。
@@ -3603,7 +3604,7 @@ public class Control extends Service {
                                 //Log.d("Miga", "total:"+total);
                                 if (start == 0) {
                                     //file = new File(Environment.getExternalStorageDirectory() + "/Download/", "test5.txt");
-                                    receive_file = new File(Environment.getExternalStorageDirectory() + "/DCIM/Camera/","P_20180803_111038.jpg");
+                                    receive_file = new File(Environment.getExternalStorageDirectory() + "/Download/", "test5.txt");
                                     fos = new FileOutputStream(receive_file);
                                     start_time_first_receive = new Date();
                                     start = 1;//已記錄開始時間
@@ -3612,18 +3613,20 @@ public class Control extends Service {
                                     fos.write(lMsg_sf, 0, total);
                                     total = 0;
                                     fos.close();
-                                    Log.d("Miga", "File Closed");
                                     end_time_first_receive = new Date();
                                     seconds_diff = end_time_first_receive.getTime() - start_time_first_receive.getTime();
-                                    s_status = "Receive_File time : " + Double.toString(seconds_diff / 1000.0);
-                                    Log.d("Miga", "Receive_File time : " + Double.toString(seconds_diff / 1000.0));
+                                    s_status = "Receive file total time : " + Double.toString(seconds_diff / 1000.0)+" sec";
+                                    Log.d("Miga", "Receive file total time : " + Double.toString(seconds_diff / 1000.0)+" sec");
                                     Thread.sleep(600000);//sleep 600sec , 10mins
                                 } else {
                                     fos.write(lMsg_sf);
                                     //Log.d("Miga","RecvMsg:"+new String(lMsg_sf, 0, receivedpkt_sf.getLength()));
                                     total -= lMsg_sf.length;
+                                    receive_total += lMsg_sf.length;
+                                    s_status = "Download the file: "+Integer.toString((receive_total/Integer.valueOf(temp_rf[1]))*100)+" %";
+                                    //Log.d("Miga", "Download the file: "+Double.toString(((double)receive_total/(double)Integer.valueOf(temp_rf[1]))*100)+" %");
                                 }
-                                Log.d("Miga", String.valueOf(lMsg_sf.length));
+                                //Log.d("Miga", String.valueOf(lMsg_sf.length));
                             }
                         }
                     }

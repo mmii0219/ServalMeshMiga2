@@ -71,6 +71,7 @@ import java.net.SocketTimeoutException;
 import java.net.UnknownHostException;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
+import java.text.DecimalFormat;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Collections;
@@ -1680,6 +1681,7 @@ public class Control extends Service {
                     canIconnects=CanIConnect(Choose_Cluster_Name);
                     if(canIconnects.equals("NO")){//同個group內已經有其他裝置連該CN了
                         Log.d("Miga", "Client can not connect!");
+                        Collect_record.clear();//清除收集到的device info，重新收集新資訊 20180804 Miga
                         STATE = StateFlag.ADD_SERVICE.getIndex();
                         return;
                     }else if(canIconnects.equals("NotReceive")){
@@ -2762,6 +2764,7 @@ public class Control extends Service {
         private DatagramPacket msgPkt;//Miga
         private boolean isreceiveformbridge=false;
         private boolean isUpdateCN=false;//20180801用來解決手動設置角色後，client的CN無法更新的問題
+        private  InetAddress P2PIPAddress;//20180804轉為此func全域變數，避免後面又接收到別人吃
 
 
         public void run() {
@@ -2793,7 +2796,7 @@ public class Control extends Service {
                             }
                             if (temp[0] != null && temp[1] != null && temp[2] != null && WiFiApName != null) {
                                 if (Newcompare(temp[0], WiFiApName) != 0) {//接收到的data和此裝置的SSID不同; 若A>B則reutrn 1
-                                    InetAddress P2PIPAddress = receivedpkt_pc.getAddress();
+                                    P2PIPAddress = receivedpkt_pc.getAddress();
                                     recv_ip = P2PIPAddress.toString().split("/")[1];//接收傳這個pkt的ip
                                     if (!isreceiveformbridge) {//還沒從bridge接收到ip
                                         if (temp.length == 4) {//表示有temp3
@@ -2844,18 +2847,18 @@ public class Control extends Service {
                                     // update peer table
                                     //if (Newcompare(temp[1], Cluster_Name) == 0) {//相同Cluster_Name
                                     if (!PeerTable.containsKey(temp[0])) {
-                                        InetAddress WiFiIPAddress = receivedpkt_pc.getAddress();
-                                        String clientip = WiFiIPAddress.toString().split("/")[1];//接收CLIENT的IP
+                                        P2PIPAddress = receivedpkt_pc.getAddress();
+                                        String clientip = P2PIPAddress.toString().split("/")[1];//接收CLIENT的IP
                                         /*20180801 新增 Start, 避免手動設置role時，client無法更新CN的問題。*/
                                         //if(IsManual) {//IsManual = true 這個裝置是手動先連線的
-                                            if (!isUpdateCN) {//還沒更新CN
+                                            //if (!isUpdateCN) {//還沒更新CN,// 20180804 註解這行，主要是讓Client都透過這個thread來更新CN
                                                 if(clientip.equals("192.168.49.1")){//GO傳來的
-                                                    Cluster_Name = temp[0];//更新自己的CN為GO的CN
-                                                    isUpdateCN = true;//已更新完
+                                                    Cluster_Name = temp[1];//更新自己的CN為GO的CN
+                                                    //isUpdateCN = true;//已更新完 // 20180804 註解這行
                                                     Log.d("Miga","Update CN:"+ Cluster_Name);
                                                     s_status = "Update CN:"+Cluster_Name;
                                                 }
-                                            }
+                                            //}
                                         //}
                                         /*20180801 新增 End, 避免手動設置role時，client無法更新CN的問題。*/
                                         PeerTable.put(temp[0], 20);//填入收到data的SSID(WiFiApName)
@@ -3596,7 +3599,7 @@ public class Control extends Service {
                 FileOutputStream fos = null;
                 int total = 0;
                 while(true) {//20180518 Controller 開啟時，這個thread就不執行了
-                    if (ROLE == RoleFlag.CLIENT.getIndex()){//是client才開啟接收檔案的thread
+                    if (ROLE == RoleFlag.CLIENT.getIndex()|| ROLE == RoleFlag.HYBRID.getIndex() ){//是client才開啟接收檔案的thread, 20180804新增加入HYBRID
                         if (receivedpkt_sf != null) {
                             try {
                                 receivedskt_sf.setSoTimeout(2000);
@@ -3649,8 +3652,12 @@ public class Control extends Service {
                                     //Log.d("Miga","RecvMsg:"+new String(lMsg_sf, 0, receivedpkt_sf.getLength()));
                                     total -= lMsg_sf.length;
                                     receive_total += lMsg_sf.length;
-                                    s_status = "Download the file: "+Integer.toString((receive_total/Integer.valueOf(temp_rf[1]))*100)+" %";
-                                    //Log.d("Miga", "Download the file: "+Integer.toString((receive_total/Integer.valueOf(temp_rf[1]))*100)+" %");
+                                    double percent;
+                                    DecimalFormat df = new DecimalFormat("##");
+                                    percent = (double)receive_total/(double)Integer.valueOf(temp_rf[1])*100;
+                                    percent = Double.parseDouble(df.format(percent));
+                                    s_status = "Download the file: "+Double.toString(percent)+" %";
+                                    //Log.d("Miga", "Download the file: "+Double.toString(percent)+" %");
                                 }
                                 //Log.d("Miga", String.valueOf(lMsg_sf.length));
                             }

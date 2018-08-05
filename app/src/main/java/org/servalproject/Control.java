@@ -338,7 +338,7 @@ public class Control extends Service {
     private Thread t_Receive_File_uni = null;
     private File send_file, receive_file;
     private BufferedInputStream bis;
-
+    private Date start_time_pc;
 
     //For Controller Start
     private List<CandidateController_set> CandController_record;
@@ -872,7 +872,17 @@ public class Control extends Service {
                 int collect_num = 10;
                 //String thisTimeMAC = record.get("MAC").toString();//record是對方的服務內容（在discovery Service時指定了record=re_record）
                 while (collect_num > 0) {
-                    record_set.put(record.get("SSID").toString(), record);//將蒐集到的其他裝置的服務根據SSID存放個別的服務
+                    //20180805 錄影片實驗用 新增Start
+                    if(WiFiApName.equals("Android_ea4a")){
+                        if(!record.get("SSID").toString().equals("Android_988f")){//ea4a不要把988f加入，目的是為了不要讓ea4a可以連到988f
+                            record_set.put(record.get("SSID").toString(), record);//將蒐集到的其他裝置的服務根據SSID存放個別的服務
+                        }
+                    }else
+                        record_set.put(record.get("SSID").toString(), record);//將蒐集到的其他裝置的服務根據SSID存放個別的服務
+                    //20180805 錄影片實驗用 新增End
+                    //20180805 為了影片因此註解下面這行 Start
+                    // record_set.put(record.get("SSID").toString(), record);//將蒐集到的其他裝置的服務根據SSID存放個別的服務
+                    //20180805 為了影片因此註解上面這行 End
                     //Log.d("Miga","WiFi_Connect/Receive record size:"+record_set.size());
                     //寫log, 只適用於android 5.0. 因為目前是以6.0來測試,因此先註解
                     /*if(CanWriteLogFiles()&&(!writeLog)&&record_set.size()==(ExpDeviceNum-1)) {//ExpDeviceNum為目前參與實驗的裝置數量, writelog為false表示還沒寫過log file
@@ -1665,7 +1675,7 @@ public class Control extends Service {
                         STATE = StateFlag.ADD_SERVICE.getIndex();
                         Isconnect = true;//p2p已有人連上/被連上,目前主要是用來判斷是否可以開始進行Group內peer的計算
                         IsP2Pconnect = true;
-                        s_status = "Step2_Connect Group time : " + Double.toString(((Calendar.getInstance().getTimeInMillis() - step2_start_time) / 1000.0)) + " stay_time : " + Double.toString((step2_sleep_time / 1000.0))
+                        s_status = "Step2_Connect Group time : " + Double.toString(((Calendar.getInstance().getTimeInMillis() - step2_start_time) / 1000.0))
                                 + " Round_Num :" + NumRound;
                         Log.d("Miga", "Step2_Connect Group time : " + Double.toString(((Calendar.getInstance().getTimeInMillis() - step2_start_time) / 1000.0)) + " stay_time : " + Double.toString((step2_sleep_time / 1000.0))
                                 + " Round_Num :" + NumRound);
@@ -2765,6 +2775,8 @@ public class Control extends Service {
         private boolean isreceiveformbridge=false;
         private boolean isUpdateCN=false;//20180801用來解決手動設置角色後，client的CN無法更新的問題
         private  InetAddress P2PIPAddress;//20180804轉為此func全域變數，避免後面又接收到別人吃
+        private Date receive_time;
+        long seconds_diff=0;
 
 
         public void run() {
@@ -2864,9 +2876,11 @@ public class Control extends Service {
                                         PeerTable.put(temp[0], 20);//填入收到data的SSID(WiFiApName)
                                         if (count_peer() + 1 != pre_peer_count) {
                                             pre_peer_count = count_peer() + 1;//更新現在PeerTable內有幾個Peer
-                                            s_status = "peer_count time : " + Double.toString(((Calendar.getInstance().getTimeInMillis() - start_time) / 1000.0))
+                                            receive_time = new Date();
+                                            seconds_diff = receive_time.getTime() - start_time_pc.getTime();
+                                            s_status = "peer_count time : " +Double.toString(seconds_diff / 1000.0)+" sec"
                                                     + " Round_Num :" + NumRound + " peer count : " + (count_peer() + 1) + " PeerTable:" + PeerTable;
-                                            Log.d("Miga", "peer_count time : " + Double.toString(((Calendar.getInstance().getTimeInMillis() - start_time) / 1000.0)) + " stay_time : " + Double.toString((sleep_time / 1000.0))
+                                            Log.d("Miga", "peer_count time : " +Double.toString(seconds_diff / 1000.0)+" sec" + " stay_time : " + Double.toString((sleep_time / 1000.0))
                                                     + " Round_Num :" + NumRound + " peer count : " + (count_peer() + 1) + " PeerTable:" + PeerTable);
                                         }
 
@@ -3510,8 +3524,8 @@ public class Control extends Service {
                         if (SendFileAuto){
                             if (start == 0) {
                                 //file = new File(Environment.getExternalStorageDirectory() + "/Download/", "test5.txt");
-                                Log.d("Miga", Environment.getExternalStorageDirectory().toString() + "/Download/test5.txt");
-                                send_file = new File(Environment.getExternalStorageDirectory() + "/Download/", "test5.txt");
+                                Log.d("Miga", Environment.getExternalStorageDirectory().toString() + "/Download/test1.txt");
+                                send_file = new File(Environment.getExternalStorageDirectory() + "/Download/", "test1.txt");
                                 bis = new BufferedInputStream(new FileInputStream(send_file));
                                 start = 1;//已開始
                             }
@@ -3627,7 +3641,7 @@ public class Control extends Service {
                                 //Log.d("Miga", "total:"+total);
                                 if (start == 0) {
                                     //file = new File(Environment.getExternalStorageDirectory() + "/Download/", "test5.txt");
-                                    receive_file = new File(Environment.getExternalStorageDirectory() + "/Download/", "test5.txt");
+                                    receive_file = new File(Environment.getExternalStorageDirectory() + "/Download/", "test1.txt");
                                     fos = new FileOutputStream(receive_file);
                                     start_time_first_receive = new Date();
                                     start = 1;//已記錄開始時間
@@ -3643,8 +3657,10 @@ public class Control extends Service {
                                     if(ROLE == RoleFlag.HYBRID.getIndex()){//若這隻裝置角色還有client，則必須再將此file傳送給他的client
                                         //開啟Send_File
                                         SendFileAuto= true;
-                                        Log.d("Miga","Send file to my client.");;
-                                        s_status = "Send file to my client!";
+                                        if(!WiFiApName.equals("Android_ea4a")) {//ea4a不轉傳
+                                            Log.d("Miga", "Send file to my client.");
+                                            s_status = "Send file to my client!";
+                                        }
                                     }
                                     Thread.sleep(600000);//sleep 600sec , 10mins
                                 } else {
@@ -3725,6 +3741,7 @@ public class Control extends Service {
 
         //Miga
         start_time=0;
+        start_time_pc=new Date();
         this.registerReceiver(this.mBatInfoReceiver, new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
         //this.registerReceiver(this.mPeerInfoReceiver, new IntentFilter(WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION));//Receiver，當peer數量改變時則近來，WIFI_P2P_PEERS_CHANGED_ACTION
         //Miga multicast

@@ -344,6 +344,7 @@ public class Control extends Service {
     private Thread t_receive_file_mc = null;
     private boolean sf_mc = false;//開啟multicast send file
     private boolean sf_unic = false;//開啟unicast send file
+    private boolean ReceiveFileNow = false;//用來讓裝置判斷自己是否正在收檔案
 
     //For Controller Start
     private List<CandidateController_set> CandController_record;
@@ -2816,7 +2817,7 @@ public class Control extends Service {
                 }
 
                 while(true){//20180518 Controller 開啟時，這個thread就不執行了
-                    if(ControllerAuto||SendFileAuto){
+                    if(ControllerAuto||SendFileAuto||ReceiveFileNow){
                         Thread.sleep(600000);//sleep 600sec , 10mins
                     }
                     if(RecvMsg_pc!="") {
@@ -3039,7 +3040,7 @@ public class Control extends Service {
         public void run() {
             try {
                 while(true){//20180518 Controller 開啟時，這個thread就不執行了
-                    if(ControllerAuto||SendFileAuto){
+                    if(ControllerAuto||SendFileAuto||ReceiveFileNow){
                         Thread.sleep(600000);//sleep 600sec , 10mins
                     }
                     if (IsP2Pconnect) {
@@ -3074,7 +3075,7 @@ public class Control extends Service {
         public void run() {
             try {
                 while(true){//20180518 Controller 開啟時，這個thread就不執行了
-                    if(ControllerAuto||SendFileAuto){
+                    if(ControllerAuto||SendFileAuto||ReceiveFileNow){
                         Thread.sleep(600000);//sleep 600sec , 10mins
                     }
                     if (IsP2Pconnect) {
@@ -3139,7 +3140,7 @@ public class Control extends Service {
                 sendds = null;
                 sendds = new DatagramSocket();
                 while(true){//20180518 Controller 開啟時，這個thread就不執行了
-                    if(ControllerAuto||SendFileAuto){
+                    if(ControllerAuto||SendFileAuto||ReceiveFileNow){
                         Thread.sleep(600000);//sleep 600sec , 10mins
                     }
                     if (IsP2Pconnect) {
@@ -3644,6 +3645,7 @@ public class Control extends Service {
                                     Log.d("Miga", "total:"+temp_rf[1]);
                                     total =  Integer.valueOf(temp_rf[1]);
                                     start_rf = 1;
+                                    ReceiveFileNow = true;//開始接收檔案，因此把Send/Receive_peer_count關掉
                                 }
                                 continue;
                             }
@@ -3832,6 +3834,7 @@ public class Control extends Service {
                                     Log.d("Miga", "total:"+temp_rf[1]);
                                     total =  Integer.valueOf(temp_rf[1]);
                                     start_rf = 1;
+                                    ReceiveFileNow = true;//開始接收檔案，因此把Send/Receive_peer_count關掉
                                 }
                                 continue;
                             }

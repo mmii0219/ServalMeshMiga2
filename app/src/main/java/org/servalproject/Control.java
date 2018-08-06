@@ -331,14 +331,19 @@ public class Control extends Service {
     private static int IP_port_send_file = 2652;//
     private Thread t_send_file = null;
     private Thread t_receive_file = null;
-    private MulticastSocket recvSFSocket;//Miga , for Send File 20180731
     private DatagramPacket receivedpkt_sf;
     private DatagramSocket receivedskt_sf;//unicast
-    private Thread t_Receive_File_multi = null;
-    private Thread t_Receive_File_uni = null;
-    private File send_file, receive_file;
-    private BufferedInputStream bis;
+    private File send_file, receive_file, send_file_mc, receive_file_mc;
+    private BufferedInputStream bis, bis_mc;
     private Date start_time_pc;
+    private MulticastSocket recvSFSocket;//Miga , for Send File multicast 2018806
+    private DatagramPacket receivedpkt_sf_mc;
+    private byte[] lMsg_sf_mc;//for multicast
+    private String RecvMsg_sf_mc="";
+    private Thread t_send_file_mc = null;
+    private Thread t_receive_file_mc = null;
+    private boolean sf_mc = false;//開啟multicast send file
+    private boolean sf_unic = false;//開啟unicast send file
 
     //For Controller Start
     private List<CandidateController_set> CandController_record;
@@ -2755,6 +2760,20 @@ public class Control extends Service {
             Log.d("Miga", "JoinControllerNewConnectMultiCst Exception:" + e);
         }
     }
+    //加入controller 傳送File multicast, 於Initial()呼叫
+    public void JoinSendFileMultiCst(){
+
+        try {
+            recvSFSocket = new MulticastSocket(6796);
+            multicgroup = InetAddress.getByName("224.0.0.3"); //客戶客戶端將自己加入到指定的multicast group中,這樣就能夠收到來自該組的消息
+            recvSFSocket.joinGroup(new InetSocketAddress(multicgroup, 6796), p2p0);//用p2p0 interface來接收muticast pkt
+            Log.d("Miga", "I join Send File multicast group success" + multicgroup);
+
+        }catch (Exception e){
+            Log.d("Miga", "JoinSendFileMultiCst Exception:" + e);
+        }
+    }
+
     // Miga, For multicast ------------End-------------
 
     //20180314 可成功使用multi, uni接收並relay(GO) pkt出去
@@ -2797,7 +2816,7 @@ public class Control extends Service {
                 }
 
                 while(true){//20180518 Controller 開啟時，這個thread就不執行了
-                    if(ControllerAuto){
+                    if(ControllerAuto||SendFileAuto){
                         Thread.sleep(600000);//sleep 600sec , 10mins
                     }
                     if(RecvMsg_pc!="") {
@@ -3020,7 +3039,7 @@ public class Control extends Service {
         public void run() {
             try {
                 while(true){//20180518 Controller 開啟時，這個thread就不執行了
-                    if(ControllerAuto){
+                    if(ControllerAuto||SendFileAuto){
                         Thread.sleep(600000);//sleep 600sec , 10mins
                     }
                     if (IsP2Pconnect) {
@@ -3055,7 +3074,7 @@ public class Control extends Service {
         public void run() {
             try {
                 while(true){//20180518 Controller 開啟時，這個thread就不執行了
-                    if(ControllerAuto){
+                    if(ControllerAuto||SendFileAuto){
                         Thread.sleep(600000);//sleep 600sec , 10mins
                     }
                     if (IsP2Pconnect) {
@@ -3120,7 +3139,7 @@ public class Control extends Service {
                 sendds = null;
                 sendds = new DatagramSocket();
                 while(true){//20180518 Controller 開啟時，這個thread就不執行了
-                    if(ControllerAuto){
+                    if(ControllerAuto||SendFileAuto){
                         Thread.sleep(600000);//sleep 600sec , 10mins
                     }
                     if (IsP2Pconnect) {
@@ -3521,59 +3540,50 @@ public class Control extends Service {
                 sendds = new DatagramSocket();
                 while(true){//20180518 Controller 開啟時，這個thread就不執行了
                     if (IsP2Pconnect) {
-                        if (SendFileAuto){
-                            if (start == 0) {
-                                //file = new File(Environment.getExternalStorageDirectory() + "/Download/", "test5.txt");
-                                Log.d("Miga", Environment.getExternalStorageDirectory().toString() + "/Download/test1.txt");
-                                send_file = new File(Environment.getExternalStorageDirectory() + "/Download/", "test1.txt");
-                                bis = new BufferedInputStream(new FileInputStream(send_file));
-                                start = 1;//已開始
+                        if (SendFileAuto) {
+                            if (sf_mc && (!sf_unic)) {//傳multi不傳uni
+                                Thread.sleep(3000);
+                                continue;
                             }
-                            sendds = null;// 20180520 關socket
-                            sendds = new DatagramSocket();// 20180520 關socket
-                            //Thread.sleep(4000);
-                            // unicast
-                            //if (WiFiApName.equals("Android_988f")) {
-                            iterator = IPTable.keySet().iterator();//IPTable的keySet為許多IP所組成
-                            while (iterator.hasNext()) {
-                                tempkey = iterator.next().toString();
-                                Log.d("Miga","Send ip:"+tempkey );
-                                message = "Send File" + "#" + send_file.length();// 0: Send  1: file.length()
-                                dp = new DatagramPacket(message.getBytes(), message.length(),
-                                        InetAddress.getByName(tempkey), IP_port_send_file);
-                                sendds.send(dp);
-                                Log.d("Miga", "message: "+message);
-                                for (int idx = 0; idx < send_file.length(); idx += 65507) {
-
-                                    bis.read(bytes, 0, bytes.length);
-
-                                    dp = new DatagramPacket(bytes, bytes.length, InetAddress.getByName(tempkey), IP_port_send_file);
-                                    sendds.send(dp);//一一傳送給IPTable內的所有IP
-                                    Thread.sleep(40);
-                                    Log.d("Miga", "idx:" + idx + " " + String.valueOf(bytes.length));
+                            if (ROLE == RoleFlag.GO.getIndex() || ROLE == RoleFlag.HYBRID.getIndex() || ROLE == RoleFlag.BRIDGE.getIndex()){
+                                if(WiFiApName.equals("Android_ea4a")) {//實驗用
+                                    Thread.sleep(10000);
+                                    continue;
                                 }
-                                bis.close();
+                                if (start == 0) {
+                                    Log.d("Miga", Environment.getExternalStorageDirectory().toString() + "/Download/test1.txt");
+                                    send_file = new File(Environment.getExternalStorageDirectory() + "/Download/", "test1.txt");
+                                    bis = new BufferedInputStream(new FileInputStream(send_file));
+                                    start = 1;//已開始
+                                }
+                                sendds = null;// 20180520 關socket
+                                sendds = new DatagramSocket();// 20180520 關socket
+                                //Thread.sleep(4000);
+                                // unicast
+                                //if (WiFiApName.equals("Android_988f")) {
+                                iterator = IPTable.keySet().iterator();//IPTable的keySet為許多IP所組成
+                                while (iterator.hasNext()) {
+                                    tempkey = iterator.next().toString();
+                                    Log.d("Miga", "Send ip:" + tempkey);
+                                    message = "Send File" + "#" + send_file.length();// 0: Send  1: file.length()
+                                    dp = new DatagramPacket(message.getBytes(), message.length(),
+                                            InetAddress.getByName(tempkey), IP_port_send_file);
+                                    sendds.send(dp);
+                                    Log.d("Miga", "message: " + message);
+                                    for (int idx = 0; idx < send_file.length(); idx += 65507) {
+
+                                        bis.read(bytes, 0, bytes.length);
+
+                                        dp = new DatagramPacket(bytes, bytes.length, InetAddress.getByName(tempkey), IP_port_send_file);
+                                        sendds.send(dp);//一一傳送給IPTable內的所有IP
+                                        Thread.sleep(40);
+                                        Log.d("Miga", "idx:" + idx + " " + String.valueOf(bytes.length));
+                                    }
+                                    bis.close();
+                                }
+                                sendds.close();// 20180520 關socket
+                                Thread.sleep(600000);//sleep 600sec , 10mins
                             }
-
-                            Thread.sleep(600000);//sleep 600sec , 10mins
-                            //}
-                            /*//multicast
-                            if (mConnectivityManager != null) {
-                                mNetworkInfo = mConnectivityManager.getNetworkInfo(ConnectivityManager.TYPE_WIFI);
-                                if (mNetworkInfo.isConnected()) {
-                                    multicgroup = InetAddress.getByName("224.0.0.3");//指定multicast要發送的group
-                                    multicsk = null;// 20180520 關socket
-                                    multicsk = new MulticastSocket(6796);//6790: for peertable update
-                                    //msgPkt = new DatagramPacket(message.getBytes(), message.length(), multicgroup, 6790);
-                                    msgPkt = new DatagramPacket(bytes, bytes.length, multicgroup, 6796);
-                                    multicsk.send(msgPkt);
-                                    //Log.v("Miga", "multicsk send message:" + message);
-                                    //s_status = "multicsk send message" + message;
-                                }
-                            }*/
-                            sendds.close();// 20180520 關socket
-                            if (multicsk != null)
-                                multicsk.close();// 20180520 關socket
                         }
                         else
                             Thread.sleep(100);
@@ -3657,6 +3667,7 @@ public class Control extends Service {
                                     if(ROLE == RoleFlag.HYBRID.getIndex()){//若這隻裝置角色還有client，則必須再將此file傳送給他的client
                                         //開啟Send_File
                                         SendFileAuto= true;
+                                        sf_unic = true;
                                         if(!WiFiApName.equals("Android_ea4a")) {//ea4a不轉傳
                                             Log.d("Miga", "Send file to my client.");
                                             s_status = "Send file to my client!";
@@ -3696,6 +3707,192 @@ public class Control extends Service {
         }
     }
 
+    //20180806 Send file multicast
+    public class Send_File_Multicast extends Thread{
+        private DatagramPacket dp;
+        private DatagramSocket sendds;
+        private Iterator iterator;
+        private String message, tempkey;
+        MulticastSocket multicsk;//Miga20180313
+        DatagramPacket msgPkt;//Miga
+        int start =0;
+        public void run(){
+            try{
+                byte[] bytes = new byte[65507];
+                while(true){//20180518 Controller 開啟時，這個thread就不執行了
+                    if (IsP2Pconnect) {
+                        if (SendFileAuto){
+                            if(ROLE != RoleFlag.GO.getIndex() && ROLE !=RoleFlag.NONE.getIndex()) {//不是GO和NONE才能傳
+                                if(sf_unic&&(!sf_mc)) {//傳uni不傳multi
+                                    Thread.sleep(3000);
+                                    continue;
+                                }
+                                if (start == 0) {
+                                    Log.d("Miga", Environment.getExternalStorageDirectory().toString() + "/Download/test1.txt");
+                                    send_file_mc = new File(Environment.getExternalStorageDirectory() + "/Download/", "test1.txt");
+                                    bis_mc = new BufferedInputStream(new FileInputStream(send_file_mc));
+                                    start = 1;//已開始
+                                }
+
+                                message = "Send File" + "#" + send_file_mc.length();// 0: Send  1: file.length()
+                                if (mConnectivityManager != null) {
+                                    mNetworkInfo = mConnectivityManager.getNetworkInfo(ConnectivityManager.TYPE_WIFI);
+                                    if (mNetworkInfo.isConnected()) {
+                                        multicgroup = InetAddress.getByName("224.0.0.3");//指定multicast要發送的group
+                                        multicsk = null;// 20180520 關socket
+                                        multicsk = new MulticastSocket(6796);//6790: for peertable update
+                                        msgPkt = new DatagramPacket(message.getBytes(), message.length(), multicgroup, 6796);
+                                        multicsk.send(msgPkt);
+                                    }
+                                }
+
+                                Log.d("Miga", "message: " + message);
+                                for (int idx = 0; idx < send_file_mc.length(); idx += 65507) {
+                                    bis_mc.read(bytes, 0, bytes.length);
+                                    if (mConnectivityManager != null) {
+                                        mNetworkInfo = mConnectivityManager.getNetworkInfo(ConnectivityManager.TYPE_WIFI);
+                                        if (mNetworkInfo.isConnected()) {
+                                            multicgroup = InetAddress.getByName("224.0.0.3");//指定multicast要發送的group
+                                            multicsk = null;// 20180520 關socket
+                                            multicsk = new MulticastSocket(6796);//6790: for peertable update
+                                            msgPkt = new DatagramPacket(bytes, bytes.length, multicgroup, 6796);
+                                            multicsk.send(msgPkt);
+                                        }
+                                    }
+                                    Thread.sleep(40);
+                                    Log.d("Miga", "idx:" + idx + " " + String.valueOf(bytes.length));
+                                }
+                                bis_mc.close();
+                                if (multicsk != null)
+                                    multicsk.close();// 20180520 關socket
+                                Thread.sleep(600000);//sleep 600sec , 10mins
+                            }else{
+                                Thread.sleep(100);
+                            }
+                        }//End SendFileAuto
+                        else
+                            Thread.sleep(100);
+                    }
+                }
+            } catch (SocketException e) {
+                e.printStackTrace();
+                Log.d("Miga", "Send_File_Multicast Socket exception" + e.toString());
+            } catch (IOException e) {
+                e.printStackTrace();
+                Log.d("Miga", "Send_File_Multicast IOException" + e.toString());
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+                Log.d("Miga", "Send_File_Multicast InterruptedException" + e.toString());
+            } catch (Exception e) {
+                e.printStackTrace();
+                Log.d("Miga", "Send_File_Multicast other exception" + e.toString());
+            }
+
+
+
+        }
+    }
+
+    public class Receive_File_Multicast extends Thread{
+        int start=0,start_time_send_file,start_rf=0;
+        Date start_time_first_receive,end_time_first_receive;
+        long seconds_diff=0;
+        String[] temp_rf;
+        int receive_total=0;//已接收多少
+        public void run(){
+            try{
+                lMsg_sf_mc = new byte[65507];
+                receivedpkt_sf_mc = new DatagramPacket(lMsg_sf_mc, lMsg_sf_mc.length);//接收到的message會存在IMsg
+                FileOutputStream fos = null;
+                int total = 0;
+                while(true) {
+                    if(!IsInitial)
+                        Thread.sleep(2500);//這裡會sleep是避免在還沒initial完時，就抓取WiFiApName。這樣會跳出exception Null object
+                    if(WiFiApName.equals("Android_ea4a")){//實驗用
+                        Thread.sleep(10000);
+                    }
+                    if (ROLE == RoleFlag.GO.getIndex()|| ROLE == RoleFlag.HYBRID.getIndex() ){//是GO, HYBRID才開啟接收multicast檔案的thread
+                        if (receivedpkt_sf_mc != null) {
+                            try {
+                                recvSFSocket.setSoTimeout(2000);
+                                recvSFSocket.receive(receivedpkt_sf_mc);//把接收到的data存在receivedpkt_sf_mc
+                            } catch (SocketTimeoutException e) {
+                                Log.d("Miga", "Receive_File_multicastsocket time out");
+                                if (ControllerAuto)
+                                    Thread.sleep(600000);//sleep 600sec , 10mins
+                            }
+                            RecvMsg_sf_mc = new String(lMsg_sf_mc, 0, receivedpkt_sf_mc.getLength());//將接收到的IMsg轉換成String型態
+                            //Log.d("Miga", "I got message from unicast" + RecvMsg_pc);
+                            //s_status = "I got message from unicast" + RecvMsg_pc;
+                        }
+                        if (RecvMsg_sf_mc.trim() != "") {
+                            if(start_rf==0) {//第一次才需要去split，因為後面傳來的都是所需要的檔案資料
+                                if(RecvMsg_sf_mc.contains("Send File")) {
+                                    temp_rf = RecvMsg_sf_mc.split("#");// 0: Send  1: file.length()
+                                    Log.d("Miga", "total:"+temp_rf[1]);
+                                    total =  Integer.valueOf(temp_rf[1]);
+                                    start_rf = 1;
+                                }
+                                continue;
+                            }
+                            if (temp_rf[0].equals("Send File")){
+                                //Log.d("Miga", "total:"+total);
+                                if (start == 0) {
+                                    receive_file_mc = new File(Environment.getExternalStorageDirectory() + "/Download/", "test1.txt");
+                                    fos = new FileOutputStream(receive_file_mc);
+                                    start_time_first_receive = new Date();
+                                    start = 1;//已記錄開始時間
+                                }
+                                if (total < lMsg_sf_mc.length) {
+                                    fos.write(lMsg_sf_mc, 0, total);
+                                    total = 0;
+                                    fos.close();
+                                    end_time_first_receive = new Date();
+                                    seconds_diff = end_time_first_receive.getTime() - start_time_first_receive.getTime();
+                                    s_status = "Receive file total time : " + Double.toString(seconds_diff / 1000.0)+" sec";
+                                    Log.d("Miga", "Receive file total time : " + Double.toString(seconds_diff / 1000.0)+" sec");
+                                    if(ROLE == RoleFlag.HYBRID.getIndex()){//若這隻裝置角色還有client，則必須再將此file傳送給他的client
+                                        //開啟Send_File
+                                        SendFileAuto= true;
+                                        sf_mc = true;//開啟multicast
+                                        //if(!WiFiApName.equals("Android_ea4a")) {//ea4a不轉傳
+                                            Log.d("Miga", "Send file.");
+                                            s_status = "Send file!";
+                                        //}
+                                    }
+                                    Thread.sleep(600000);//sleep 600sec , 10mins
+                                } else {
+                                    fos.write(lMsg_sf_mc);
+                                    //Log.d("Miga","RecvMsg:"+new String(lMsg_sf, 0, receivedpkt_sf.getLength()));
+                                    total -= lMsg_sf_mc.length;
+                                    receive_total += lMsg_sf_mc.length;
+                                    double percent;
+                                    DecimalFormat df = new DecimalFormat("##");
+                                    percent = (double)receive_total/(double)Integer.valueOf(temp_rf[1])*100;
+                                    percent = Double.parseDouble(df.format(percent));
+                                    s_status = "Download the file: "+Double.toString(percent)+" %";
+                                    //Log.d("Miga", "Download the file: "+Double.toString(percent)+" %");
+                                }
+                                //Log.d("Miga", String.valueOf(lMsg_sf.length));
+                            }
+                        }
+                    }
+                }
+            }catch (SocketException e) {
+                e.printStackTrace();
+                Log.d("Miga", "Receive_File_Multicast Socket exception" + e.toString());
+            } catch (IOException e) {
+                e.printStackTrace();
+                Log.d("Miga", "Receive_File_Multicast IOException" + e.toString());
+            } catch (Exception e) {
+                e.printStackTrace();
+                Log.d("Miga", "Receive_File_Multicast Exception" + e.toString());
+            }
+
+
+
+        }
+    }
     @Override
     public void onCreate() {
         // Leaf0818
@@ -3887,6 +4084,7 @@ public class Control extends Service {
             JoinUpdateCCMultiCst();//用來讓Client在Step2傳送欲連線的info給GO
             JoinUpdateControllerMultiCst();//用來進行controller資料的傳輸
             JoinControllerNewConnectMultiCst();//用來讓controller傳送新的連線資訊
+            JoinSendFileMultiCst();//用來讓client向GO傳送檔案
             ROLE = RoleFlag.NONE.getIndex();
 
             manager.requestGroupInfo(channel, new WifiP2pManager.GroupInfoListener() {
@@ -4209,14 +4407,14 @@ public class Control extends Service {
             t_receive_peer_count.start();
         }
 
-        if (t_Send_Cluster_Name == null) {
+        /*if (t_Send_Cluster_Name == null) {
             t_Send_Cluster_Name = new Send_Cluster_Name();
             t_Send_Cluster_Name.start();
         }
         if (t_Receive_Cluster_Name == null) {
             t_Receive_Cluster_Name = new Receive_Cluster_Name();
             t_Receive_Cluster_Name.start();
-        }
+        }*/
 
         if(t_CanConnect == null){
             t_CanConnect = new CanConnect();
@@ -4235,6 +4433,15 @@ public class Control extends Service {
         if (t_receive_file == null) {
             t_receive_file = new Receive_File();
             t_receive_file.start();
+        }
+        //20180806 SendFileMulticast
+        if (t_send_file_mc == null) {
+            t_send_file_mc = new Send_File_Multicast();
+            t_send_file_mc.start();
+        }
+        if (t_receive_file_mc == null) {
+            t_receive_file_mc = new Receive_File_Multicast();
+            t_receive_file_mc.start();
         }
         // </aqua0722>
         new Task().execute(State.On);

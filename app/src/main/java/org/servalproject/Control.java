@@ -1661,11 +1661,11 @@ public class Control extends Service {
                     } else {//Wifi成功連線
                         // renew service record information
                         Cluster_Name = Choose_Cluster_Name;//將自己的Cluster_Name更新為新的GO的Cluster_Name //Miga 20180118 將自己的clusterName更新了
-                        //HasClient();//檢查有沒有client
-                        //if(hasclients)
-                        ROLE = RoleFlag.HYBRID.getIndex();//變為HYBRID
-                        //else
-                        //    ROLE = RoleFlag.CLIENT.getIndex();//變為CLIENT
+                        HasClient();//檢查有沒有client
+                        if(hasclients)//20180806加入 實驗用，只要沒有client，但wifi有連。腳色還是client
+                            ROLE = RoleFlag.HYBRID.getIndex();//變為HYBRID
+                        else
+                            ROLE = RoleFlag.CLIENT.getIndex();//變為CLIENT
                         WiFiIpAddr = wifiIpAddress();//取得wifi IP address
                         Log.d("Miga", "Step2Connection/ROLE:" + ROLE + " Cluster_Name:" + Cluster_Name + " wifiIpAddress:" + WiFiIpAddr);
                         s_status = "state: WiFiIpAddress=" + WiFiIpAddr;
@@ -2353,8 +2353,12 @@ public class Control extends Service {
                             if(Step2Auto)
                                 step2_sleep_time = step2_sleep_time + randomnum;
                         }else{
-                            int randomnum = randomWithRange(8,10)*1000;
-                            Thread.sleep(randomnum);
+                            int randomnum = randomWithRange(8, 10) * 1000;
+                            if(SendFileAuto||ReceiveFileNow)//傳檔案時睡久一點
+                                Thread.sleep(20000);
+                            else {
+                                Thread.sleep(randomnum);
+                            }
                             //Log.d("Miga","Thread sleep:"+randomnum);
                             sleep_time = sleep_time + randomnum;
                             if(Step2Auto)
@@ -3547,10 +3551,10 @@ public class Control extends Service {
                                 continue;
                             }
                             if (ROLE == RoleFlag.GO.getIndex() || ROLE == RoleFlag.HYBRID.getIndex() || ROLE == RoleFlag.BRIDGE.getIndex()){
-                                if(WiFiApName.equals("Android_ea4a")) {//實驗用
+                               /* if(WiFiApName.equals("Android_ea4a")) {//實驗用
                                     Thread.sleep(10000);
                                     continue;
-                                }
+                                }*/
                                 if (start == 0) {
                                     Log.d("Miga", Environment.getExternalStorageDirectory().toString() + "/Download/test1.txt");
                                     send_file = new File(Environment.getExternalStorageDirectory() + "/Download/", "test1.txt");
@@ -3623,14 +3627,14 @@ public class Control extends Service {
                 receivedskt_sf = new DatagramSocket(IP_port_send_file);
                 FileOutputStream fos = null;
                 int total = 0;
-                while(true) {//20180518 Controller 開啟時，這個thread就不執行了
+                while(true) {
                     if (ROLE == RoleFlag.CLIENT.getIndex()|| ROLE == RoleFlag.HYBRID.getIndex() ){//是client才開啟接收檔案的thread, 20180804新增加入HYBRID
                         if (receivedpkt_sf != null) {
                             try {
-                                receivedskt_sf.setSoTimeout(2000);
+                                receivedskt_sf.setSoTimeout(60);
                                 receivedskt_sf.receive(receivedpkt_sf);//把接收到的data存在receivedp.
                             } catch (SocketTimeoutException e) {
-                                Log.d("Miga", "Receive_File_unicastsocket time out");
+                                //Log.d("Miga", "Receive_File_unicastsocket time out");
                                 if (ControllerAuto)
                                     Thread.sleep(600000);//sleep 600sec , 10mins
                             }
@@ -3670,10 +3674,10 @@ public class Control extends Service {
                                         //開啟Send_File
                                         SendFileAuto= true;
                                         sf_unic = true;
-                                        if(!WiFiApName.equals("Android_ea4a")) {//ea4a不轉傳
+                                        //if(!WiFiApName.equals("Android_ea4a")) {//ea4a不轉傳
                                             Log.d("Miga", "Send file to my client.");
                                             s_status = "Send file to my client!";
-                                        }
+                                        //}
                                     }
                                     Thread.sleep(600000);//sleep 600sec , 10mins
                                 } else {
@@ -3730,8 +3734,8 @@ public class Control extends Service {
                                     continue;
                                 }
                                 if (start == 0) {
-                                    Log.d("Miga", Environment.getExternalStorageDirectory().toString() + "/Download/test1.txt");
-                                    send_file_mc = new File(Environment.getExternalStorageDirectory() + "/Download/", "test1.txt");
+                                    Log.d("Miga", Environment.getExternalStorageDirectory().toString() + "/Download/test2.txt");
+                                    send_file_mc = new File(Environment.getExternalStorageDirectory() + "/Download/", "test2.txt");
                                     bis_mc = new BufferedInputStream(new FileInputStream(send_file_mc));
                                     start = 1;//已開始
                                 }
@@ -3810,16 +3814,16 @@ public class Control extends Service {
                 while(true) {
                     if(!IsInitial)
                         Thread.sleep(2500);//這裡會sleep是避免在還沒initial完時，就抓取WiFiApName。這樣會跳出exception Null object
-                    if(WiFiApName.equals("Android_ea4a")){//實驗用
+                    /*if(WiFiApName.equals("Android_ea4a")){//實驗用
                         Thread.sleep(10000);
-                    }
+                    }*/
                     if (ROLE == RoleFlag.GO.getIndex()|| ROLE == RoleFlag.HYBRID.getIndex() ){//是GO, HYBRID才開啟接收multicast檔案的thread
                         if (receivedpkt_sf_mc != null) {
                             try {
-                                recvSFSocket.setSoTimeout(2000);
+                                recvSFSocket.setSoTimeout(150);
                                 recvSFSocket.receive(receivedpkt_sf_mc);//把接收到的data存在receivedpkt_sf_mc
                             } catch (SocketTimeoutException e) {
-                                Log.d("Miga", "Receive_File_multicastsocket time out");
+                                //Log.d("Miga", "Receive_File_multicastsocket time out");
                                 if (ControllerAuto)
                                     Thread.sleep(600000);//sleep 600sec , 10mins
                             }
@@ -3841,7 +3845,7 @@ public class Control extends Service {
                             if (temp_rf[0].equals("Send File")){
                                 //Log.d("Miga", "total:"+total);
                                 if (start == 0) {
-                                    receive_file_mc = new File(Environment.getExternalStorageDirectory() + "/Download/", "test1.txt");
+                                    receive_file_mc = new File(Environment.getExternalStorageDirectory() + "/Download/", "test2.txt");
                                     fos = new FileOutputStream(receive_file_mc);
                                     start_time_first_receive = new Date();
                                     start = 1;//已記錄開始時間

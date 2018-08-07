@@ -74,13 +74,12 @@
         android:layout_toRightOf="@+id/enablestep2"
         android:text="Controller" />
 
-    <CheckBox
-        android:id="@+id/enabledFile"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_alignBaseline="@+id/serval_status"
-        android:layout_alignBottom="@+id/serval_status"
+    <Button
+        android:id="@+id/SendFileBtn"
+        android:layout_width="130dp"
+        android:layout_height="40dp"
+        android:layout_alignTop="@+id/enabled"
         android:layout_toEndOf="@+id/enablestep2"
-        android:layout_toRightOf="@+id/enablestep2"
         android:text="Send File" />
+
 </RelativeLayout>

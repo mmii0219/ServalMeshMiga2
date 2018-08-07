@@ -12,19 +12,23 @@ import android.content.ServiceConnection;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
+import android.database.Cursor;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
+import android.net.Uri;
 import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
 import android.os.Bundle;
 import android.os.IBinder;
+import android.provider.OpenableColumns;
 import android.provider.Settings;
 import android.text.method.ScrollingMovementMethod;
 import android.view.Display;
 import android.view.View;
 import android.view.View.OnClickListener;
 import android.view.WindowManager;
+import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.CompoundButton;
 import android.widget.ImageView;
@@ -49,6 +53,7 @@ import org.servalproject.system.WifiAdhocNetwork;
 import org.servalproject.system.WifiApControl;
 import org.servalproject.ui.SimpleAdapter.ViewBinder;
 
+import java.io.File;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Collection;
@@ -566,7 +571,7 @@ public class Networks extends Activity implements CompoundButton.OnCheckedChange
         }
     };
     //Miga End
-    //Miga 20180802
+/*    //Miga 20180802
     private CheckBox.OnCheckedChangeListener chkfilelistener = new CheckBox.OnCheckedChangeListener(){
         @Override
         public void onCheckedChanged(CompoundButton buttonView,boolean isChecked) {
@@ -577,6 +582,68 @@ public class Networks extends Activity implements CompoundButton.OnCheckedChange
             }
         }
     };
+    //Miga End*/
+    //Miga 20180807 Send file button
+    private Button.OnClickListener btn1Listener = new Button.OnClickListener() {
+        @Override
+        public void onClick(View v) {
+            // TODO Auto-generated method stub
+            Log.d("Miga","Onclick!");
+            Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
+            intent.setType("*/*");
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+
+            try {
+                startActivityForResult(
+                        Intent.createChooser(intent, "Select a File to Upload"), 1);
+            } catch (android.content.ActivityNotFoundException ex) {
+                // Potentially direct the user to the Market with a Dialog
+                //Toast.makeText(this, "Please install a File Manager.",Toast.LENGTH_SHORT).show();
+            }
+        }
+    };
+    //取得所選擇的檔案路徑+名稱
+    public void onActivityResult(int requestCode, int resultCode, Intent data) {
+        String [] temp,resultFilePath;
+        String filepaths1="";
+        switch(requestCode) {
+            case 1:
+                Log.i("Test", "Result URI " + data.getData());
+                if (resultCode == RESULT_OK) {
+                    // Get the Uri of the selected file
+                    Uri uri = data.getData();
+                    String uriString = uri.toString();
+                    File myFile = new File(uriString);
+                    String path = myFile.getAbsolutePath();
+                    String displayName = null;
+                    if (uriString.startsWith("content://")) {
+                        Cursor cursor = null;
+                        try {
+                            cursor = getApplicationContext().getContentResolver().query(uri, null, null, null, null);
+                            if (cursor != null && cursor.moveToFirst()) {
+                                displayName = cursor.getString(cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME));
+                                Log.d("Miga","content://displayName:"+displayName);
+                                temp = path.split("3A");
+                                //Log.d("Miga","temp:"+temp);
+                                filepaths1 = temp[1].replace("%2F","/");
+                                Log.d("Miga","filepath:"+filepaths1);
+                                resultFilePath = filepaths1.split(displayName);
+                                Log.d("Miga","resultFilePath:"+resultFilePath[0]);
+                                WiFiDirectService.FileNamee = displayName;//e.g. P_20180807_163146.jpg
+                                WiFiDirectService.FilePathh = resultFilePath[0];//e.g. DCIM/Camera/
+                                WiFiDirectService.SendFileAuto = true;
+                            }
+                        } finally {
+                            cursor.close();
+                        }
+                    } else if (uriString.startsWith("file://")) {
+                        displayName = myFile.getName();
+                        Log.d("Miga","displayName:"+displayName);
+                    }
+                }
+                break;
+        }
+    }
     //Miga End
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -595,10 +662,13 @@ public class Networks extends Activity implements CompoundButton.OnCheckedChange
         this.enabledcontroller = (CheckBox) this.findViewById(R.id.enablecontroller);
         this.enabledcontroller.setOnCheckedChangeListener(chkcontrollerlistener);
         //Miga End
-        //Miga 20180802
+       /* //Miga 20180802
         this.enabledFile = (CheckBox) this.findViewById(R.id.enabledFile);
         this.enabledFile.setOnCheckedChangeListener(chkfilelistener);
-        //Miga End
+        //Miga End*/
+        //Miga 20180807
+        Button btn1 = (Button) findViewById(R.id.SendFileBtn);
+        btn1.setOnClickListener(btn1Listener);
         this.app = (ServalBatPhoneApplication) this.getApplication();
         this.nm = NetworkManager.getNetworkManager(app);
         adapter = new SimpleAdapter<NetworkControl>(this, binder);

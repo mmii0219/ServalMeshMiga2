@@ -345,6 +345,9 @@ public class Control extends Service {
     private boolean sf_mc = false;//開啟multicast send file
     private boolean sf_unic = false;//開啟unicast send file
     private boolean ReceiveFileNow = false;//用來讓裝置判斷自己是否正在收檔案
+    //For Choose file to send 20180807
+    static public String FilePathh = "";
+    static public String FileNamee ="";
 
     //For Controller Start
     private List<CandidateController_set> CandController_record;
@@ -3556,8 +3559,13 @@ public class Control extends Service {
                                     continue;
                                 }*/
                                 if (start == 0) {
-                                    Log.d("Miga", Environment.getExternalStorageDirectory().toString() + "/Download/test1.txt");
-                                    send_file = new File(Environment.getExternalStorageDirectory() + "/Download/", "test1.txt");
+                                    if(sf_unic){//此裝置是轉傳的(HYBRID)，因此傳送的FILE是在Download中
+                                        Log.d("Miga", Environment.getExternalStorageDirectory().toString() + "/Download/"+FileNamee);
+                                        send_file = new File(Environment.getExternalStorageDirectory() + "/Download/", FileNamee);
+                                    }else {
+                                        Log.d("Miga", Environment.getExternalStorageDirectory().toString() + "/" + FilePathh + FileNamee);
+                                        send_file = new File(Environment.getExternalStorageDirectory() + "/" + FilePathh, FileNamee);
+                                    }
                                     bis = new BufferedInputStream(new FileInputStream(send_file));
                                     start = 1;//已開始
                                 }
@@ -3570,7 +3578,7 @@ public class Control extends Service {
                                 while (iterator.hasNext()) {
                                     tempkey = iterator.next().toString();
                                     Log.d("Miga", "Send ip:" + tempkey);
-                                    message = "Send File" + "#" + send_file.length();// 0: Send  1: file.length()
+                                    message = "Send File" + "#" + send_file.length()+"#"+FileNamee;// 0: Send  1: file.length() 2:FileNamee
                                     dp = new DatagramPacket(message.getBytes(), message.length(),
                                             InetAddress.getByName(tempkey), IP_port_send_file);
                                     sendds.send(dp);
@@ -3587,7 +3595,8 @@ public class Control extends Service {
                                     bis.close();
                                 }
                                 sendds.close();// 20180520 關socket
-                                Thread.sleep(600000);//sleep 600sec , 10mins
+                                SendFileAuto = false;
+                                //Thread.sleep(600000);//sleep 600sec , 10mins
                             }
                         }
                         else
@@ -3631,7 +3640,7 @@ public class Control extends Service {
                     if (ROLE == RoleFlag.CLIENT.getIndex()|| ROLE == RoleFlag.HYBRID.getIndex() ){//是client才開啟接收檔案的thread, 20180804新增加入HYBRID
                         if (receivedpkt_sf != null) {
                             try {
-                                receivedskt_sf.setSoTimeout(60);
+                                receivedskt_sf.setSoTimeout(170);
                                 receivedskt_sf.receive(receivedpkt_sf);//把接收到的data存在receivedp.
                             } catch (SocketTimeoutException e) {
                                 //Log.d("Miga", "Receive_File_unicastsocket time out");
@@ -3647,6 +3656,7 @@ public class Control extends Service {
                                 if(RecvMsg_sf.contains("Send File")) {
                                     temp_rf = RecvMsg_sf.split("#");// 0: Send  1: file.length()
                                     Log.d("Miga", "total:"+temp_rf[1]);
+                                    FileNamee = temp_rf[2];
                                     total =  Integer.valueOf(temp_rf[1]);
                                     start_rf = 1;
                                     ReceiveFileNow = true;//開始接收檔案，因此把Send/Receive_peer_count關掉
@@ -3657,7 +3667,7 @@ public class Control extends Service {
                                 //Log.d("Miga", "total:"+total);
                                 if (start == 0) {
                                     //file = new File(Environment.getExternalStorageDirectory() + "/Download/", "test5.txt");
-                                    receive_file = new File(Environment.getExternalStorageDirectory() + "/Download/", "test1.txt");
+                                    receive_file = new File(Environment.getExternalStorageDirectory() + "/Download/", FileNamee);
                                     fos = new FileOutputStream(receive_file);
                                     start_time_first_receive = new Date();
                                     start = 1;//已記錄開始時間
@@ -3734,13 +3744,20 @@ public class Control extends Service {
                                     continue;
                                 }
                                 if (start == 0) {
+                                   /*if(sf_mc){//此裝置是轉傳的(HYBRID)，因此傳送的FILE是在Download中
+                                       Log.d("Miga", Environment.getExternalStorageDirectory().toString() + "/Download/"+FileNamee);
+                                       send_file_mc = new File(Environment.getExternalStorageDirectory() + "/Download/", FileNamee);
+                                    }else {
+                                        Log.d("Miga", Environment.getExternalStorageDirectory().toString() + "/" + FilePathh + FileNamee);
+                                        send_file = new File(Environment.getExternalStorageDirectory() + "/" + FilePathh, FileNamee);
+                                    }*/
                                     Log.d("Miga", Environment.getExternalStorageDirectory().toString() + "/Download/test2.txt");
                                     send_file_mc = new File(Environment.getExternalStorageDirectory() + "/Download/", "test2.txt");
                                     bis_mc = new BufferedInputStream(new FileInputStream(send_file_mc));
                                     start = 1;//已開始
                                 }
 
-                                message = "Send File" + "#" + send_file_mc.length();// 0: Send  1: file.length()
+                                message = "Send File" + "#" + send_file_mc.length()+"#"+FileNamee;// 0: Send  1: file.length() 2:FileNamee
                                 if (mConnectivityManager != null) {
                                     mNetworkInfo = mConnectivityManager.getNetworkInfo(ConnectivityManager.TYPE_WIFI);
                                     if (mNetworkInfo.isConnected()) {
@@ -3771,7 +3788,9 @@ public class Control extends Service {
                                 bis_mc.close();
                                 if (multicsk != null)
                                     multicsk.close();// 20180520 關socket
-                                Thread.sleep(600000);//sleep 600sec , 10mins
+                                Thread.sleep(400);
+                                SendFileAuto = false;
+                                //Thread.sleep(600000);//sleep 600sec , 10mins
                             }else{
                                 Thread.sleep(100);
                             }
@@ -3820,7 +3839,7 @@ public class Control extends Service {
                     if (ROLE == RoleFlag.GO.getIndex()|| ROLE == RoleFlag.HYBRID.getIndex() ){//是GO, HYBRID才開啟接收multicast檔案的thread
                         if (receivedpkt_sf_mc != null) {
                             try {
-                                recvSFSocket.setSoTimeout(300);
+                                recvSFSocket.setSoTimeout(250);
                                 recvSFSocket.receive(receivedpkt_sf_mc);//把接收到的data存在receivedpkt_sf_mc
                             } catch (SocketTimeoutException e) {
                                 //Log.d("Miga", "Receive_File_multicastsocket time out");
@@ -3836,6 +3855,7 @@ public class Control extends Service {
                                 if(RecvMsg_sf_mc.contains("Send File")) {
                                     temp_rf = RecvMsg_sf_mc.split("#");// 0: Send  1: file.length()
                                     Log.d("Miga", "total:"+temp_rf[1]);
+                                    FileNamee = temp_rf[2];
                                     total =  Integer.valueOf(temp_rf[1]);
                                     start_rf = 1;
                                     ReceiveFileNow = true;//開始接收檔案，因此把Send/Receive_peer_count關掉
@@ -3845,7 +3865,7 @@ public class Control extends Service {
                             if (temp_rf[0].equals("Send File")){
                                 //Log.d("Miga", "total:"+total);
                                 if (start == 0) {
-                                    receive_file_mc = new File(Environment.getExternalStorageDirectory() + "/Download/", "test2.txt");
+                                    receive_file_mc = new File(Environment.getExternalStorageDirectory() + "/Download/", FileNamee);
                                     fos = new FileOutputStream(receive_file_mc);
                                     start_time_first_receive = new Date();
                                     start = 1;//已記錄開始時間

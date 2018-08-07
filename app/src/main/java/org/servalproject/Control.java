@@ -3820,7 +3820,7 @@ public class Control extends Service {
                     if (ROLE == RoleFlag.GO.getIndex()|| ROLE == RoleFlag.HYBRID.getIndex() ){//是GO, HYBRID才開啟接收multicast檔案的thread
                         if (receivedpkt_sf_mc != null) {
                             try {
-                                recvSFSocket.setSoTimeout(150);
+                                recvSFSocket.setSoTimeout(300);
                                 recvSFSocket.receive(receivedpkt_sf_mc);//把接收到的data存在receivedpkt_sf_mc
                             } catch (SocketTimeoutException e) {
                                 //Log.d("Miga", "Receive_File_multicastsocket time out");

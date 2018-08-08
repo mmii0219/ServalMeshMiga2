@@ -3549,16 +3549,18 @@ public class Control extends Service {
                 while(true){//20180518 Controller 開啟時，這個thread就不執行了
                     if (IsP2Pconnect) {
                         if (SendFileAuto) {
-                            if (sf_mc && (!sf_unic)) {//傳multi不傳uni
-                                Thread.sleep(3000);
-                                continue;
+                            if (ROLE == RoleFlag.HYBRID.getIndex()) {//如果是HRBIRD
+                                if(!sf_unic) {//sf_unic==true時才可傳
+                                    Thread.sleep(3000);
+                                    continue;
+                                }
                             }
                             if (ROLE == RoleFlag.GO.getIndex() || ROLE == RoleFlag.HYBRID.getIndex() || ROLE == RoleFlag.BRIDGE.getIndex()){
                                /* if(WiFiApName.equals("Android_ea4a")) {//實驗用
                                     Thread.sleep(10000);
                                     continue;
                                 }*/
-                                if (start == 0) {
+                                //if (start == 0) {
                                     if(sf_unic){//此裝置是轉傳的(HYBRID)，因此傳送的FILE是在Download中
                                         Log.d("Miga", Environment.getExternalStorageDirectory().toString() + "/Download/"+FileNamee);
                                         send_file = new File(Environment.getExternalStorageDirectory() + "/Download/", FileNamee);
@@ -3566,9 +3568,10 @@ public class Control extends Service {
                                         Log.d("Miga", Environment.getExternalStorageDirectory().toString() + "/" + FilePathh + FileNamee);
                                         send_file = new File(Environment.getExternalStorageDirectory() + "/" + FilePathh, FileNamee);
                                     }
+                                    bis = null;
                                     bis = new BufferedInputStream(new FileInputStream(send_file));
-                                    start = 1;//已開始
-                                }
+                                    //start = 1;//已開始
+                                //}
                                 sendds = null;// 20180520 關socket
                                 sendds = new DatagramSocket();// 20180520 關socket
                                 //Thread.sleep(4000);
@@ -3596,6 +3599,7 @@ public class Control extends Service {
                                 }
                                 sendds.close();// 20180520 關socket
                                 SendFileAuto = false;
+                                sf_unic = false;//unicast已傳完，因此設為false。
                                 //Thread.sleep(600000);//sleep 600sec , 10mins
                             }
                         }
@@ -3640,7 +3644,7 @@ public class Control extends Service {
                     if (ROLE == RoleFlag.CLIENT.getIndex()|| ROLE == RoleFlag.HYBRID.getIndex() ){//是client才開啟接收檔案的thread, 20180804新增加入HYBRID
                         if (receivedpkt_sf != null) {
                             try {
-                                receivedskt_sf.setSoTimeout(170);
+                                receivedskt_sf.setSoTimeout(200);
                                 receivedskt_sf.receive(receivedpkt_sf);//把接收到的data存在receivedp.
                             } catch (SocketTimeoutException e) {
                                 //Log.d("Miga", "Receive_File_unicastsocket time out");
@@ -3738,24 +3742,32 @@ public class Control extends Service {
                 while(true){//20180518 Controller 開啟時，這個thread就不執行了
                     if (IsP2Pconnect) {
                         if (SendFileAuto){
+                            if (ROLE == RoleFlag.HYBRID.getIndex()) {//如果是HRBIRD
+                                if(!sf_mc) {//sf_mc==true時才可傳
+                                    Thread.sleep(3000);
+                                    continue;
+                                }
+                            }
                             if(ROLE != RoleFlag.GO.getIndex() && ROLE !=RoleFlag.NONE.getIndex()) {//不是GO和NONE才能傳
                                 if(sf_unic&&(!sf_mc)) {//傳uni不傳multi
                                     Thread.sleep(3000);
                                     continue;
                                 }
-                                if (start == 0) {
-                                   /*if(sf_mc){//此裝置是轉傳的(HYBRID)，因此傳送的FILE是在Download中
-                                       Log.d("Miga", Environment.getExternalStorageDirectory().toString() + "/Download/"+FileNamee);
-                                       send_file_mc = new File(Environment.getExternalStorageDirectory() + "/Download/", FileNamee);
-                                    }else {
-                                        Log.d("Miga", Environment.getExternalStorageDirectory().toString() + "/" + FilePathh + FileNamee);
-                                        send_file = new File(Environment.getExternalStorageDirectory() + "/" + FilePathh, FileNamee);
-                                    }*/
-                                    Log.d("Miga", Environment.getExternalStorageDirectory().toString() + "/Download/test2.txt");
-                                    send_file_mc = new File(Environment.getExternalStorageDirectory() + "/Download/", "test2.txt");
+                                //Thread.sleep(1000);
+                                //if (start == 0) {
+                                    if(sf_mc){//此裝置是轉傳的(HYBRID)，因此傳送的FILE是在Download中
+                                        Log.d("Miga", Environment.getExternalStorageDirectory().toString() + "/Download/"+FileNamee);
+                                        send_file_mc = new File(Environment.getExternalStorageDirectory() + "/Download/", FileNamee);
+                                    }else{
+                                        Log.d("Miga", Environment.getExternalStorageDirectory().toString() + "/"+FilePathh+FileNamee);
+                                        send_file_mc = new File(Environment.getExternalStorageDirectory() + "/"+FilePathh, FileNamee);
+                                    }
+                                    bis_mc = null;
                                     bis_mc = new BufferedInputStream(new FileInputStream(send_file_mc));
                                     start = 1;//已開始
-                                }
+                                    //Log.d("Miga", Environment.getExternalStorageDirectory().toString() + "/Download/test2.txt");
+                                    //send_file_mc = new File(Environment.getExternalStorageDirectory() + "/Download/", "test2.txt");
+                                //}
 
                                 message = "Send File" + "#" + send_file_mc.length()+"#"+FileNamee;// 0: Send  1: file.length() 2:FileNamee
                                 if (mConnectivityManager != null) {
@@ -3790,6 +3802,7 @@ public class Control extends Service {
                                     multicsk.close();// 20180520 關socket
                                 Thread.sleep(400);
                                 SendFileAuto = false;
+                                sf_mc = false;//multicast已傳完，因此設為false。
                                 //Thread.sleep(600000);//sleep 600sec , 10mins
                             }else{
                                 Thread.sleep(100);
@@ -3831,9 +3844,9 @@ public class Control extends Service {
                 FileOutputStream fos = null;
                 int total = 0;
                 while(true) {
-                    if(!IsInitial)
+                    /*if(!IsInitial)
                         Thread.sleep(2500);//這裡會sleep是避免在還沒initial完時，就抓取WiFiApName。這樣會跳出exception Null object
-                    /*if(WiFiApName.equals("Android_ea4a")){//實驗用
+                    if(WiFiApName.equals("Android_ea4a")){//實驗用
                         Thread.sleep(10000);
                     }*/
                     if (ROLE == RoleFlag.GO.getIndex()|| ROLE == RoleFlag.HYBRID.getIndex() ){//是GO, HYBRID才開啟接收multicast檔案的thread

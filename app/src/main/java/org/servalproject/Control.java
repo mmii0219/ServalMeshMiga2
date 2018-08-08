@@ -3690,7 +3690,7 @@ public class Control extends Service {
                                         sf_unic = true;
                                         //if(!WiFiApName.equals("Android_ea4a")) {//ea4a不轉傳
                                             Log.d("Miga", "Send file to my client.");
-                                            s_status = "Send file to my client!";
+                                            s_status = "Send file!";
                                         //}
                                     }
                                     Thread.sleep(600000);//sleep 600sec , 10mins
@@ -3703,7 +3703,7 @@ public class Control extends Service {
                                     DecimalFormat df = new DecimalFormat("##");
                                     percent = (double)receive_total/(double)Integer.valueOf(temp_rf[1])*100;
                                     percent = Double.parseDouble(df.format(percent));
-                                    s_status = "Download the file: "+Double.toString(percent)+" %";
+                                    s_status = "Download the file: "+(int)percent+" %";
                                     //Log.d("Miga", "Download the file: "+Double.toString(percent)+" %");
                                 }
                                 //Log.d("Miga", String.valueOf(lMsg_sf.length));
@@ -3910,7 +3910,7 @@ public class Control extends Service {
                                     DecimalFormat df = new DecimalFormat("##");
                                     percent = (double)receive_total/(double)Integer.valueOf(temp_rf[1])*100;
                                     percent = Double.parseDouble(df.format(percent));
-                                    s_status = "Download the file: "+Double.toString(percent)+" %";
+                                    s_status = "Download the file: "+(int)percent+" %";
                                     //Log.d("Miga", "Download the file: "+Double.toString(percent)+" %");
                                 }
                                 //Log.d("Miga", String.valueOf(lMsg_sf.length));

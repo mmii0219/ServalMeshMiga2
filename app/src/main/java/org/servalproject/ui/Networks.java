@@ -632,6 +632,7 @@ public class Networks extends Activity implements CompoundButton.OnCheckedChange
                                 WiFiDirectService.FileNamee = displayName;//e.g. P_20180807_163146.jpg
                                 WiFiDirectService.FilePathh = resultFilePath[0];//e.g. DCIM/Camera/
                                 WiFiDirectService.SendFileAuto = true;
+                                WiFiDirectService.BtnOnclick = true;//拿來讓HYBRID判斷是否是自己這個裝置觸發的按鈕
                             }
                         } finally {
                             cursor.close();

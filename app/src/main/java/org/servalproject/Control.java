@@ -321,9 +321,10 @@ public class Control extends Service {
     boolean isSaveendtime=false;
     int packetNum=0;
     //0730 For ChangeEdges()
-    private Stack<String> WaitStack;
-    private Stack<String> ProcessStack;
+    private Stack<Integer> WaitStack;
+    private Stack<Integer> ProcessStack;
     private int beProcessNum;
+    private int SrcDeviceIndexs,DestDeviceIndexs;
     //0731 For Send file
     static public boolean SendFileAuto = false;
     private byte[] lMsg_sf;
@@ -348,6 +349,7 @@ public class Control extends Service {
     //For Choose file to send 20180807
     static public String FilePathh = "";
     static public String FileNamee ="";
+    static public boolean BtnOnclick = false;//用來判斷這台裝置是否有按下傳送檔案的按鈕
 
     //For Controller Start
     private List<CandidateController_set> CandController_record;
@@ -3550,7 +3552,10 @@ public class Control extends Service {
                     if (IsP2Pconnect) {
                         if (SendFileAuto) {
                             if (ROLE == RoleFlag.HYBRID.getIndex()) {//如果是HRBIRD
-                                if(!sf_unic) {//sf_unic==true時才可傳
+                                if(BtnOnclick){//BtnOnclick==true時才可傳
+
+                                }
+                                else if (!sf_unic){//sf_unic==true時才可傳
                                     Thread.sleep(3000);
                                     continue;
                                 }
@@ -3589,8 +3594,10 @@ public class Control extends Service {
                                     bis.close();
                                 }
                                 sendds.close();// 關socket
-                                SendFileAuto = false;
                                 sf_unic = false;//unicast已傳完，因此設為false。
+                                Thread.sleep(1000);
+                                SendFileAuto = false;
+                                BtnOnclick = false;
                             }
                         }
                         else
@@ -3731,7 +3738,10 @@ public class Control extends Service {
                     if (IsP2Pconnect) {
                         if (SendFileAuto){
                             if (ROLE == RoleFlag.HYBRID.getIndex()) {//如果是HRBIRD
-                                if(!sf_mc) {//sf_mc==true時才可傳
+                                if(BtnOnclick){//BtnOnclick==true時才可傳
+
+                                }
+                                else if(!sf_mc) {//sf_mc==true時才可傳
                                     Thread.sleep(3000);
                                     continue;
                                 }
@@ -3785,8 +3795,10 @@ public class Control extends Service {
                                 if (multicsk != null)
                                     multicsk.close();//  關socket
                                 Thread.sleep(400);
-                                SendFileAuto = false;
                                 sf_mc = false;//multicast已傳完，因此設為false。
+                                Thread.sleep(1000);
+                                SendFileAuto = false;
+                                BtnOnclick = false;
                             }else{
                                 Thread.sleep(100);
                             }
@@ -6531,11 +6543,13 @@ public class Control extends Service {
                                     }
                                 }
                             } else{
-                                //src, dest的wifi和p2p都不是空的
-                                Log.d("Miga","src&dest wifi&p2p is not null");
-                                //往回推改變已經分配好的的code
-                                //先移除wifi連線
-
+                                SrcDeviceIndexs = SrcDeviceIndex;
+                                DestDeviceIndexs = DestDeviceIndex;
+                                WaitStack.push(DestDeviceIndex);
+                                WaitStack.push(SrcDeviceIndex);
+                                while(!WaitStack.empty()){
+                                    ChangeEdges();
+                                }
                             }
                         }
                     }
@@ -6606,8 +6620,53 @@ public class Control extends Service {
 
     //往回推的function
     public void ChangeEdges(){
-
-        //stack.push("ff");
+        int ProcessNodeIndex=WaitStack.pop();
+        ProcessStack.push(ProcessNodeIndex);
+        beProcessNum = 0;
+        if(ProcessNodeIndex!=DestDeviceIndexs){
+            if(!CheckDeviceWifiConnect(ProcessNodeIndex)){
+                //移除所有之前wifi連線網路的設定
+                List<WifiConfiguration> list = wifi.getConfiguredNetworks();
+                for (WifiConfiguration i : list) {
+                    wifi.removeNetwork(i.networkId);//移除所有之前wifi連線網路的設定
+                    if(!wifi.removeNetwork(i.networkId))
+                        wifi.disableNetwork(i.networkId);//Android 6.0無法清除連線，只好先disable
+                    wifi.saveConfiguration();//除存設定
+                }
+                WaitStack.push(getDeviceIndex(second_round_Controller_record.get(ProcessNodeIndex).getWiFiInterface()));
+                beProcessNum += 1;
+                if(ProcessStack.empty()){
+                    int ConnectInd = WaitStack.peek();
+                    SrcDestWifiConnect(ProcessNodeIndex,ConnectInd);
+                }else{
+                    ProcessStack.pop();
+                    SrcDestWifiConnect(ProcessNodeIndex,ProcessStack.peek());
+                    ProcessStack.push(ProcessNodeIndex);
+                }
+                if(CheckDeviceP2PConnect(ProcessNodeIndex).equals("Cant")){
+                    GOdisconnect();
+                    WaitStack.push(getDeviceIndex(second_round_Controller_record.get(ProcessNodeIndex).getP2PInterface()));
+                    beProcessNum +=1;
+                    CreateP2PGroup();
+                }
+            }else{
+                ProcessStack.pop();
+                SrcDestWifiConnect(ProcessNodeIndex,ProcessStack.peek());
+                ProcessStack.push(ProcessNodeIndex);
+            }
+        }else{
+            if(CheckDeviceP2PConnect(ProcessNodeIndex).equals("Cant")){
+                GOdisconnect();
+                WaitStack.push(getDeviceIndex(second_round_Controller_record.get(ProcessNodeIndex).getP2PInterface()));
+                beProcessNum +=1;
+                CreateP2PGroup();
+            }
+        }
+        while (beProcessNum != 0) {
+            ChangeEdges();
+            beProcessNum -= 1;
+        }
+        ProcessStack.pop();
     }
 
     //檢查該device的wifi interface是否是空的
